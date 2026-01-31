@@ -1,0 +1,66 @@
+{
+  "correlation_id": "927ef304-0117-44cb-a8a7-06daea796775",
+  "account_id": "MISSING-999",
+  "account_name": "MISSING-999",
+  "decision": "BLOCK",
+  "stage": "complete",
+  "timestamp": "2026-01-31T19:37:08.491401",
+  "risk_analysis": {
+    "summary": "The onboarding process is currently stalled due to missing critical account, opportunity, contract, and invoice data.",
+    "risk_level": "critical",
+    "risks": [
+      {
+        "issue": "Missing account, opportunity, and contract data",
+        "impact": "Without this data, the customer cannot be properly onboarded, leading to potential loss of revenue and customer dissatisfaction.",
+        "urgency": "high"
+      },
+      {
+        "issue": "Missing invoice information",
+        "impact": "The absence of an invoice could delay payment processes and create confusion regarding billing, impacting cash flow.",
+        "urgency": "medium"
+      }
+    ],
+    "recommended_actions": [
+      {
+        "action": "Gather and input all missing account, opportunity, and contract data",
+        "owner": "Customer Success Team",
+        "priority": 1
+      },
+      {
+        "action": "Create and send an invoice for the account once the data is available",
+        "owner": "Finance Team",
+        "priority": 2
+      }
+    ],
+    "estimated_resolution_time": "1-2 weeks, depending on data retrieval speed",
+    "can_proceed_with_warnings": false
+  },
+  "violations": {
+    "account": [
+      "Account data missing"
+    ],
+    "user": [
+      "User data missing"
+    ],
+    "opportunity": [
+      "Opportunity data missing"
+    ],
+    "contract": [
+      "Contract data missing"
+    ]
+  },
+  "warnings": {
+    "invoice": [
+      "No invoice found for this account"
+    ]
+  },
+  "actions_taken": [],
+  "notifications_sent": [
+    {
+      "channel": "slack",
+      "recipient": "#cs-onboarding-alerts",
+      "message": "Blocked notification sent for MISSING-999"
+    }
+  ],
+  "provisioning": null
+}

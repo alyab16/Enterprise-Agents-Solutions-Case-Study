@@ -1,0 +1,70 @@
+{
+  "correlation_id": "0ceba1a2-ea55-455e-907e-093e96bd392f",
+  "account_id": "BETA-002",
+  "account_name": "Beta Industries",
+  "decision": "BLOCK",
+  "stage": "complete",
+  "timestamp": "2026-01-31T19:08:26.762901",
+  "risk_analysis": {
+    "summary": "Beta Industries is currently in the negotiation stage with a contract in draft status and an invoice facing an API error. Immediate attention is required to move forward with onboarding.",
+    "risk_level": "high",
+    "risks": [
+      {
+        "issue": "Opportunity not won, currently in negotiation stage",
+        "impact": "Delays in finalizing the contract and onboarding process, potentially affecting revenue recognition and customer satisfaction.",
+        "urgency": "high"
+      },
+      {
+        "issue": "Contract still in draft status",
+        "impact": "Inability to proceed with onboarding and service delivery, leading to potential loss of customer trust.",
+        "urgency": "medium"
+      },
+      {
+        "issue": "Invoice API error due to expired OAuth token",
+        "impact": "Inability to generate invoices, which could disrupt cash flow and financial reporting.",
+        "urgency": "high"
+      }
+    ],
+    "recommended_actions": [
+      {
+        "action": "Resolve the negotiation stage by finalizing the opportunity and moving it to 'Won'.",
+        "owner": "Sales Team",
+        "priority": 1
+      },
+      {
+        "action": "Finalize and sign the contract to move it out of draft status.",
+        "owner": "Legal Team",
+        "priority": 2
+      },
+      {
+        "action": "Refresh the OAuth token to resolve the API error for the invoice.",
+        "owner": "Technical Support Team",
+        "priority": 1
+      }
+    ],
+    "estimated_resolution_time": "1-2 weeks",
+    "can_proceed_with_warnings": false
+  },
+  "violations": {
+    "opportunity": [
+      "Opportunity not won (stage: Negotiation)"
+    ]
+  },
+  "warnings": {
+    "contract": [
+      "Contract still in Draft status"
+    ],
+    "invoice": [
+      "NetSuite API error: [TOKEN_EXPIRED] OAuth token has expired. Please refresh the token. (HTTP 401)"
+    ]
+  },
+  "actions_taken": [],
+  "notifications_sent": [
+    {
+      "channel": "slack",
+      "recipient": "#cs-onboarding-alerts",
+      "message": "Blocked notification sent for Beta Industries"
+    }
+  ],
+  "provisioning": null
+}

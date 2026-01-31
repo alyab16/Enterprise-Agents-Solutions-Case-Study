@@ -3,10 +3,13 @@ Demo API endpoints for showcasing the agent.
 """
 
 from fastapi import APIRouter
+from fastapi.responses import HTMLResponse, FileResponse
 from app.agent import run_onboarding
 from app.notifications import get_sent_notifications, clear_notifications
 from app.integrations.provisioning import reset_all as reset_provisioning
 from app.integrations.api_errors import enable_error_simulation, disable_error_simulation
+from app.reports import generate_full_run_report, REPORTS_DIR
+import os
 
 router = APIRouter()
 
@@ -227,3 +230,85 @@ async def reset_demo():
     reset_provisioning()
     disable_error_simulation()
     return {"status": "reset", "message": "Demo state cleared"}
+
+
+# ============================================================================
+# REPORT GENERATION ENDPOINTS
+# ============================================================================
+
+@router.post("/run-with-report/{account_id}")
+async def run_with_report(account_id: str):
+    """
+    Run a scenario and generate full reports (HTML emails, Markdown, JSON audit).
+    
+    Returns paths to generated files.
+    """
+    clear_notifications()
+    
+    # Run the onboarding
+    result = run_onboarding(
+        account_id=account_id,
+        event_type="demo.with_report",
+    )
+    
+    # Generate all reports
+    generated_files = generate_full_run_report(result)
+    
+    return {
+        "account_id": account_id,
+        "decision": result.get("decision"),
+        "stage": result.get("stage"),
+        "generated_reports": generated_files,
+    }
+
+
+@router.get("/reports")
+async def list_reports():
+    """List all generated reports."""
+    if not os.path.exists(REPORTS_DIR):
+        return {"reports": []}
+    
+    files = os.listdir(REPORTS_DIR)
+    reports = {
+        "html_emails": [f for f in files if f.endswith(".html")],
+        "markdown_reports": [f for f in files if f.endswith(".md")],
+        "audit_logs": [f for f in files if f.endswith(".json")],
+    }
+    return {"reports_directory": REPORTS_DIR, "reports": reports}
+
+
+@router.get("/reports/{filename}", response_class=HTMLResponse)
+async def get_report(filename: str):
+    """
+    Get a specific report file.
+    
+    HTML files are rendered directly in browser.
+    """
+    filepath = os.path.join(REPORTS_DIR, filename)
+    
+    if not os.path.exists(filepath):
+        return HTMLResponse(content="<h1>Report not found</h1>", status_code=404)
+    
+    with open(filepath, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    if filename.endswith(".html"):
+        return HTMLResponse(content=content)
+    elif filename.endswith(".md"):
+        # Wrap markdown in basic HTML for viewing
+        return HTMLResponse(content=f"<pre style='font-family: monospace; white-space: pre-wrap;'>{content}</pre>")
+    elif filename.endswith(".json"):
+        return HTMLResponse(content=f"<pre style='font-family: monospace;'>{content}</pre>")
+    else:
+        return HTMLResponse(content=content)
+
+
+@router.get("/reports/{filename}/download")
+async def download_report(filename: str):
+    """Download a report file."""
+    filepath = os.path.join(REPORTS_DIR, filename)
+    
+    if not os.path.exists(filepath):
+        return {"error": "Report not found"}
+    
+    return FileResponse(filepath, filename=filename)
