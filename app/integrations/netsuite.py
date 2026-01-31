@@ -18,10 +18,49 @@ from datetime import date, datetime, timedelta
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 from app.logging.logger import log_event
+from app.integrations.api_errors import (
+    NetSuiteError,
+    NetSuiteAuthenticationError,
+    NetSuiteTokenExpiredError,
+    NetSuiteAuthorizationError,
+    NetSuiteValidationError,
+    NetSuiteRequiredFieldError,
+    NetSuiteNotFoundError,
+    NetSuiteRateLimitError,
+    NetSuiteServerError,
+    APICredentials,
+    NETSUITE_CREDENTIALS,
+    validate_netsuite_credentials,
+    check_netsuite_permission,
+    ERROR_SIMULATOR,
+)
 
 
 # ============================================================================
-# SIMULATED HTTP CLIENT
+# API CONFIGURATION
+# ============================================================================
+
+@dataclass
+class NetSuiteConfig:
+    """NetSuite API configuration."""
+    account_id: str = "TSTDRV123456"
+    credentials: APICredentials = None
+    
+    def __post_init__(self):
+        if self.credentials is None:
+            self.credentials = NETSUITE_CREDENTIALS
+    
+    @property
+    def base_url(self) -> str:
+        return f"https://{self.account_id}.suitetalk.api.netsuite.com/services/rest/record/v1"
+
+
+# Global config
+_config = NetSuiteConfig()
+
+
+# ============================================================================
+# MOCK HTTP RESPONSE (kept for compatibility)
 # ============================================================================
 
 @dataclass
@@ -33,15 +72,6 @@ class MockHTTPResponse:
     
     def json(self) -> Dict[str, Any]:
         return self.json_data
-
-
-class NetSuiteAPIError(Exception):
-    """Exception for NetSuite API errors."""
-    def __init__(self, status_code: int, error_code: str, message: str):
-        self.status_code = status_code
-        self.error_code = error_code
-        self.message = message
-        super().__init__(f"NetSuite API Error {status_code}: [{error_code}] {message}")
 
 
 # ============================================================================
@@ -297,6 +327,11 @@ ACCOUNT_TO_INVOICE_MAP = {
     "BETA-002": "1002", 
     "GAMMA-003": "1003",
     "DELTA-004": "1004",
+    # Error simulation accounts
+    "AUTH-ERROR": "_auth_error",
+    "PERM-ERROR": "_perm_error",
+    "SERVER-ERROR": "_server_error",
+    "VALIDATION-ERROR": "_validation_error",
 }
 
 
@@ -306,31 +341,49 @@ ACCOUNT_TO_INVOICE_MAP = {
 
 class NetSuiteClient:
     """
-    Mock NetSuite REST API client.
+    Mock NetSuite REST API client with realistic error handling.
     
-    In production, this would handle:
-    - OAuth authentication
-    - Request signing
+    Simulates:
+    - OAuth token-based authentication
+    - Permission checking
+    - Field validation
     - Rate limiting
-    - Pagination
-    - Error handling
+    - Error responses matching real NetSuite API
     """
     
-    def __init__(self, account_id: str = "TSTDRV123456", base_url: str = None):
-        self.account_id = account_id
-        self.base_url = base_url or f"https://{account_id}.suitetalk.api.netsuite.com/services/rest/record/v1"
+    def __init__(self, config: NetSuiteConfig = None):
+        self.config = config or _config
         self._request_count = 0
+        self._concurrent_requests = 0
+        self._max_concurrent = 10  # NetSuite concurrency limit
+    
+    def _check_auth(self) -> None:
+        """Validate authentication before making requests."""
+        validate_netsuite_credentials(self.config.credentials)
+        ERROR_SIMULATOR.maybe_raise_error("netsuite")
+    
+    def _check_permission(self, record_type: str, operation: str) -> None:
+        """Check if user has permission for the operation."""
+        check_netsuite_permission(self.config.credentials, record_type, operation)
+    
+    def _check_rate_limit(self) -> None:
+        """Check if we've exceeded concurrency limits."""
+        self._concurrent_requests += 1
+        if self._concurrent_requests > self._max_concurrent:
+            raise NetSuiteRateLimitError(limit=self._max_concurrent)
     
     def _make_request(
         self, 
         method: str, 
         endpoint: str, 
+        record_type: str = "invoice",
+        operation: str = "read",
         params: Dict = None,
         json_body: Dict = None,
         headers: Dict = None
     ) -> MockHTTPResponse:
         """
-        Simulate making an HTTP request to NetSuite REST API.
+        Make a request to NetSuite REST API with full validation.
         """
         self._request_count += 1
         request_id = str(uuid.uuid4())[:8]
@@ -339,9 +392,15 @@ class NetSuiteClient:
             "netsuite.api.request",
             method=method,
             endpoint=endpoint,
+            record_type=record_type,
             request_id=request_id,
             params=params,
         )
+        
+        # Validate auth, permissions, and rate limits
+        self._check_auth()
+        self._check_permission(record_type, operation)
+        self._check_rate_limit()
         
         # Simulate API latency would go here in real implementation
         # await asyncio.sleep(0.1)
@@ -361,14 +420,16 @@ class NetSuiteClient:
         
         Retrieve a single invoice by internal ID.
         """
+        # Check for error simulation
+        if invoice_id.startswith("_"):
+            self._raise_simulated_error(invoice_id)
+        
+        self._make_request("GET", f"/invoice/{invoice_id}", "invoice", "read")
+        
         log_event("netsuite.api.get_invoice", invoice_id=invoice_id)
         
         if invoice_id not in MOCK_INVOICES_DB:
-            raise NetSuiteAPIError(
-                status_code=404,
-                error_code="RECORD_NOT_FOUND",
-                message=f"Invoice with ID {invoice_id} not found"
-            )
+            raise NetSuiteNotFoundError("invoice", invoice_id)
         
         invoice = MOCK_INVOICES_DB[invoice_id].copy()
         
@@ -380,6 +441,28 @@ class NetSuiteClient:
         )
         
         return invoice
+    
+    def _raise_simulated_error(self, error_type: str) -> None:
+        """Raise a simulated error for testing."""
+        if error_type == "_auth_error":
+            raise NetSuiteAuthenticationError(
+                message="Invalid login credentials. Token-based authentication failed."
+            )
+        elif error_type == "_perm_error":
+            raise NetSuiteAuthorizationError(
+                permission="read",
+                record_type="invoice"
+            )
+        elif error_type == "_server_error":
+            raise NetSuiteServerError(
+                message="An unexpected error has occurred. Please try again."
+            )
+        elif error_type == "_validation_error":
+            raise NetSuiteValidationError(
+                field="entity",
+                value="INVALID",
+                reason="Invalid customer reference"
+            )
     
     def get_invoice_by_external_id(self, external_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -491,6 +574,13 @@ def get_invoice(account_id: str) -> Dict[str, Any]:
     
     This is the main function used by the onboarding agent.
     Returns a simplified structure for the agent to process.
+    
+    Error handling:
+    - Authentication errors return status "AUTH_ERROR"
+    - Permission errors return status "PERMISSION_ERROR"
+    - Validation errors return status "VALIDATION_ERROR"
+    - Not found returns status "NOT_FOUND"
+    - Server errors return status "SERVER_ERROR"
     """
     client = get_client()
     
@@ -511,13 +601,60 @@ def get_invoice(account_id: str) -> Dict[str, Any]:
         
         # Transform NetSuite response to agent-friendly format
         return _transform_invoice_for_agent(invoice, account_id)
-        
-    except NetSuiteAPIError as e:
+    
+    except NetSuiteAuthenticationError as e:
+        log_event("netsuite.api.auth_error", error=str(e), account_id=account_id)
+        return {
+            "invoice_id": None,
+            "status": "AUTH_ERROR",
+            "error": str(e),
+            "error_code": e.error_code,
+            "error_details": e.details,
+        }
+    
+    except NetSuiteAuthorizationError as e:
+        log_event("netsuite.api.permission_error", error=str(e), account_id=account_id)
+        return {
+            "invoice_id": None,
+            "status": "PERMISSION_ERROR",
+            "error": str(e),
+            "error_code": e.error_code,
+            "error_details": e.details,
+        }
+    
+    except NetSuiteValidationError as e:
+        log_event("netsuite.api.validation_error", error=str(e), account_id=account_id)
+        return {
+            "invoice_id": None,
+            "status": "VALIDATION_ERROR",
+            "error": str(e),
+            "error_code": e.error_code,
+            "error_details": e.details,
+        }
+    
+    except NetSuiteNotFoundError as e:
+        log_event("netsuite.api.not_found", error=str(e), account_id=account_id)
+        return {
+            "invoice_id": None,
+            "status": "NOT_FOUND",
+            "error": str(e),
+        }
+    
+    except NetSuiteServerError as e:
+        log_event("netsuite.api.server_error", error=str(e), account_id=account_id)
+        return {
+            "invoice_id": None,
+            "status": "SERVER_ERROR",
+            "error": str(e),
+            "error_code": e.error_code,
+        }
+    
+    except NetSuiteError as e:
         log_event("netsuite.api.error", error=str(e), account_id=account_id)
         return {
             "invoice_id": None,
             "status": "API_ERROR",
-            "error": str(e)
+            "error": str(e),
         }
 
 

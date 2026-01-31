@@ -77,9 +77,9 @@ def _build_analysis_context(state: dict) -> str:
     account = state.get("account")
     if account:
         sections.append(f"""ACCOUNT:
-        - Name: {account.get('Name', 'Unknown')}
-        - Industry: {account.get('Industry', 'Not specified')}
-        - Country: {account.get('BillingCountry', 'Not specified')}""")
+- Name: {account.get('Name', 'Unknown')}
+- Industry: {account.get('Industry', 'Not specified')}
+- Country: {account.get('BillingCountry', 'Not specified')}""")
     else:
         sections.append("ACCOUNT: Missing")
     
@@ -87,9 +87,9 @@ def _build_analysis_context(state: dict) -> str:
     opportunity = state.get("opportunity")
     if opportunity:
         sections.append(f"""OPPORTUNITY:
-        - Stage: {opportunity.get('StageName', 'Unknown')}
-        - Amount: ${opportunity.get('Amount', 0):,.2f}
-        - Close Date: {opportunity.get('CloseDate', 'Unknown')}""")
+- Stage: {opportunity.get('StageName', 'Unknown')}
+- Amount: ${opportunity.get('Amount', 0):,.2f}
+- Close Date: {opportunity.get('CloseDate', 'Unknown')}""")
     else:
         sections.append("OPPORTUNITY: Missing")
     
@@ -97,9 +97,9 @@ def _build_analysis_context(state: dict) -> str:
     contract = state.get("contract")
     if contract:
         sections.append(f"""CONTRACT:
-        - Status: {contract.get('Status', 'Unknown')}
-        - Start Date: {contract.get('StartDate', 'Unknown')}
-        - Has Owner: {'Yes' if contract.get('OwnerId') else 'No'}""")
+- Status: {contract.get('Status', 'Unknown')}
+- Start Date: {contract.get('StartDate', 'Unknown')}
+- Has Owner: {'Yes' if contract.get('OwnerId') else 'No'}""")
     else:
         sections.append("CONTRACT: Missing")
     
@@ -107,9 +107,9 @@ def _build_analysis_context(state: dict) -> str:
     invoice = state.get("invoice")
     if invoice:
         sections.append(f"""INVOICE:
-        - Status: {invoice.get('status', 'Unknown')}
-        - Amount: ${invoice.get('amount', 0):,.2f}
-        - Due Date: {invoice.get('due_date', 'Unknown')}""")
+- Status: {invoice.get('status', 'Unknown')}
+- Amount: ${invoice.get('amount', 0):,.2f}
+- Due Date: {invoice.get('due_date', 'Unknown')}""")
     else:
         sections.append("INVOICE: Not found")
     
