@@ -1,0 +1,23 @@
+# Core framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+
+# LangGraph for agent orchestration
+langgraph>=0.0.40
+langchain>=0.1.0
+langchain-core>=0.1.0
+
+# OpenAI for LLM
+openai>=1.10.0
+
+# Environment management
+python-dotenv>=1.0.0
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+httpx>=0.26.0
+
+# Optional: for better logging
+rich>=13.0.0

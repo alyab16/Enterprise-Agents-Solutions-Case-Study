@@ -214,3 +214,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+gather_everything.py
+app_python_code_dump.txt

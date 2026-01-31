@@ -1,27 +1,37 @@
-from typing import Any, Dict, Literal, TypedDict
-
-OnboardingStage = Literal[
-    "START",
-    "WAITING_FOR_CONTRACT",
-    "WAITING_FOR_INVOICE",
-    "READY_TO_PROVISION",
-    "PROVISIONING",
-    "ACTIVE",
-    "BLOCKED",
-]
+from typing import TypedDict, Dict, List, Any, Optional
 
 
 class AgentState(TypedDict, total=False):
-    correlation_id: str
+    # Metadata
     account_id: str
-    trigger_event_type: str
-
-    salesforce: Dict[str, Any]
-    clm: Dict[str, Any]
-    netsuite: Dict[str, Any]
+    correlation_id: str
+    event_type: str
+    
+    # Domain data from integrations
+    account: Dict[str, Any]
+    opportunity: Dict[str, Any]
+    contract: Dict[str, Any]
+    user: Dict[str, Any]
+    invoice: Dict[str, Any]
     provisioning: Dict[str, Any]
 
-    stage: OnboardingStage
-    risks: list[str]
-    actions_taken: list[str]
+    # Governance & validation
+    violations: Dict[str, List[str]]
+    warnings: Dict[str, List[str]]
+    decisions: List[str]
+    overrides: Dict[str, str]
+    
+    # Control flow
+    stage: str
+    decision: str
+    
+    # Risk analysis (LLM-powered)
+    risk_analysis: Dict[str, Any]
+    
+    # Actions taken
+    actions_taken: List[Dict[str, Any]]
+    notifications_sent: List[Dict[str, Any]]
+    
+    # Human-readable outputs
     human_summary: str
+    recommended_actions: List[str]
