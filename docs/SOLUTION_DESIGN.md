@@ -37,7 +37,7 @@ This document describes an **AI-powered Customer Success Onboarding Agent** that
 | Intelligent decision-making | LangGraph state machine with conditional routing |
 | LLM-powered analysis | OpenAI GPT-4 for risk assessment and summaries |
 | Proactive notifications | Slack and email alerts to stakeholders |
-| Full observability | Structured JSON logging, audit trails |
+| Full observability | LangSmith tracing, structured JSON logging, audit trails |
 | Error resilience | Comprehensive error handling for all API failures |
 
 ---
@@ -46,66 +46,126 @@ This document describes an **AI-powered Customer Success Onboarding Agent** that
 
 ### 2.1 High-Level Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              TRIGGER LAYER                                   │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │  Salesforce │  │   Manual    │  │  Scheduled  │  │   Webhook   │        │
-│  │   Webhook   │  │   Trigger   │  │    Cron     │  │    API      │        │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘        │
-└─────────┼────────────────┼────────────────┼────────────────┼────────────────┘
-          │                │                │                │
-          └────────────────┴────────────────┴────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           AGENT ORCHESTRATION                                │
-│                              (LangGraph)                                     │
-│  ┌────────┐   ┌────────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐  │
-│  │  Init  │──▶│   Fetch    │──▶│ Validate │──▶│ Analyze  │──▶│ Decide   │  │
-│  │        │   │   Data     │   │  Rules   │   │  Risks   │   │          │  │
-│  └────────┘   └────────────┘   └──────────┘   └──────────┘   └────┬─────┘  │
-│                                                                    │        │
-│                         ┌──────────────────────────────────────────┤        │
-│                         │                    │                     │        │
-│                         ▼                    ▼                     ▼        │
-│                    ┌─────────┐         ┌──────────┐         ┌──────────┐   │
-│                    │  BLOCK  │         │ ESCALATE │         │ PROCEED  │   │
-│                    └────┬────┘         └────┬─────┘         └────┬─────┘   │
-│                         │                   │                    │         │
-│                         └───────────────────┴────────────────────┘         │
-│                                             │                               │
-│                                             ▼                               │
-│                    ┌────────────────────────────────────────────┐          │
-│                    │  Notify / Provision / Generate Summary    │          │
-│                    └────────────────────────────────────────────┘          │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          INTEGRATION LAYER                                   │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │  Salesforce │  │     CLM     │  │  NetSuite   │  │ Provisioning│        │
-│  │    (CRM)    │  │ (Contracts) │  │   (ERP)     │  │   (SaaS)    │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘        │
-│                                                                              │
-│  ┌─────────────┐  ┌─────────────┐                                           │
-│  │    Slack    │  │    Email    │                                           │
-│  │   (Notify)  │  │   (Notify)  │                                           │
-│  └─────────────┘  └─────────────┘                                           │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph TriggerLayer["🔔 TRIGGER LAYER"]
+        direction LR
+        SF_WH[Salesforce Webhook]
+        MANUAL[Manual Trigger]
+        CRON[Scheduled Cron]
+        API_WH[Webhook API]
+    end
+
+    subgraph AgentOrchestration["🤖 AGENT ORCHESTRATION (LangGraph)"]
+        direction TB
+        INIT[Initialize State]
+        FETCH[Fetch Data]
+        VALIDATE[Validate Rules]
+        ANALYZE[Analyze Risks]
+        DECIDE{Decision Router}
+        
+        BLOCK[🚫 BLOCK]
+        ESCALATE[⚠️ ESCALATE]
+        PROCEED[✅ PROCEED]
+        
+        NOTIFY[Send Notifications]
+        PROVISION[Provision Account]
+        SUMMARY[Generate Summary]
+        
+        INIT --> FETCH
+        FETCH --> VALIDATE
+        VALIDATE --> ANALYZE
+        ANALYZE --> DECIDE
+        
+        DECIDE -->|violations > 0| BLOCK
+        DECIDE -->|warnings > 0| ESCALATE
+        DECIDE -->|all clear| PROCEED
+        
+        BLOCK --> NOTIFY
+        ESCALATE --> NOTIFY
+        PROCEED --> PROVISION
+        PROVISION --> NOTIFY
+        NOTIFY --> SUMMARY
+    end
+
+    subgraph IntegrationLayer["🔌 INTEGRATION LAYER"]
+        direction LR
+        CRM[(Salesforce<br/>CRM)]
+        CLM_SYS[(CLM<br/>Contracts)]
+        ERP[(NetSuite<br/>ERP)]
+        PROV[(Provisioning<br/>SaaS)]
+        SLACK_INT[Slack]
+        EMAIL_INT[Email]
+    end
+
+    SF_WH --> INIT
+    MANUAL --> INIT
+    CRON --> INIT
+    API_WH --> INIT
+    
+    FETCH <-.-> CRM
+    FETCH <-.-> CLM_SYS
+    FETCH <-.-> ERP
+    PROVISION <-.-> PROV
+    NOTIFY <-.-> SLACK_INT
+    NOTIFY <-.-> EMAIL_INT
 ```
 
 ### 2.2 Data Flow
 
-1. **Trigger**: Salesforce fires webhook when Opportunity reaches "Closed Won"
-2. **Initialize**: Agent creates correlation ID for tracking, initializes state
-3. **Fetch**: Agent calls Salesforce, CLM, and NetSuite APIs to gather data
-4. **Validate**: Business rules (invariants) check data against requirements
-5. **Analyze**: LLM generates risk assessment and recommendations
-6. **Decide**: Router determines BLOCK / ESCALATE / PROCEED
-7. **Act**: Agent provisions account or sends notifications
-8. **Report**: Generate audit log, email notifications, run reports
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client
+    participant API as FastAPI
+    participant Agent as LangGraph Agent
+    participant SF as Salesforce
+    participant CLM as CLM
+    participant NS as NetSuite
+    participant LLM as OpenAI GPT-4
+    participant Prov as Provisioning
+    participant Notify as Notifications
+
+    Client->>API: POST /webhook/onboarding
+    API->>Agent: Start workflow
+    
+    rect rgb(230, 245, 255)
+        Note over Agent,NS: 📥 Data Collection Phase
+        Agent->>SF: GET Account, User, Opportunity
+        SF-->>Agent: Account data
+        Agent->>CLM: GET Contract status
+        CLM-->>Agent: Contract data
+        Agent->>NS: GET Invoice
+        NS-->>Agent: Invoice data
+    end
+    
+    rect rgb(255, 245, 230)
+        Note over Agent,LLM: 🔍 Analysis Phase
+        Agent->>Agent: Run invariant checks
+        Agent->>LLM: Analyze risks & generate summary
+        LLM-->>Agent: Risk assessment + recommendations
+        Agent->>Agent: Make decision (BLOCK/ESCALATE/PROCEED)
+    end
+    
+    alt Decision = PROCEED
+        rect rgb(230, 255, 230)
+            Note over Agent,Notify: ✅ Success Path
+            Agent->>Prov: Create tenant
+            Prov-->>Agent: Tenant ID
+            Agent->>Notify: Send success notification
+            Agent->>Notify: Send welcome email
+        end
+    else Decision = BLOCK or ESCALATE
+        rect rgb(255, 230, 230)
+            Note over Agent,Notify: 🚨 Alert Path
+            Agent->>Notify: Send alert notification
+            Agent->>Notify: Send escalation email
+        end
+    end
+    
+    Agent-->>API: Final state
+    API-->>Client: OnboardingResponse
+```
 
 ### 2.3 Technology Stack
 
@@ -113,9 +173,10 @@ This document describes an **AI-powered Customer Success Onboarding Agent** that
 |-------|------------|---------|
 | API Framework | FastAPI | Async REST API server |
 | Agent Framework | LangGraph | State machine orchestration |
-| LLM | OpenAI GPT-4 | Risk analysis, summaries |
+| LLM | OpenAI GPT-4o-mini | Risk analysis, summaries |
+| Observability | LangSmith | Tracing, debugging, monitoring |
 | Integrations | REST APIs | Salesforce, NetSuite, CLM |
-| Logging | Structured JSON | Observability, audit trail |
+| Logging | Structured JSON | Audit trail |
 | Reports | HTML/Markdown | Email templates, documentation |
 
 ---
@@ -124,14 +185,62 @@ This document describes an **AI-powered Customer Success Onboarding Agent** that
 
 ### 3.1 LLM Use Cases
 
-| Use Case | Input | Output |
-|----------|-------|--------|
-| **Risk Analysis** | Validation results, account data | Risk level, business impact, recommendations |
-| **Summary Generation** | Complete agent state | Human-readable status summary |
-| **Action Recommendations** | Violations/warnings | Prioritized action list with owners |
-| **Customer Communications** | Account context | Welcome emails, status updates |
+```mermaid
+mindmap
+  root((LLM Use Cases))
+    Risk Analysis
+      Assess business impact
+      Identify blockers
+      Prioritize issues
+    Summary Generation
+      Human-readable status
+      Executive overview
+      Technical details
+    Action Recommendations
+      Prioritized actions
+      Owner assignment
+      Timeline suggestions
+    Customer Communications
+      Welcome emails
+      Status updates
+      Escalation messages
+```
 
-### 3.2 Risk Analysis Prompt Engineering
+### 3.2 Risk Analysis Flow
+
+```mermaid
+flowchart LR
+    subgraph Input
+        STATE[Agent State]
+        VIOL[Violations]
+        WARN[Warnings]
+        DATA[Account Data]
+    end
+    
+    subgraph LLM["OpenAI GPT-4"]
+        PROMPT[System Prompt]
+        ANALYSIS[Risk Analysis]
+    end
+    
+    subgraph Output
+        SUMMARY[Human Summary]
+        LEVEL[Risk Level]
+        ACTIONS[Recommended Actions]
+    end
+    
+    STATE --> PROMPT
+    VIOL --> PROMPT
+    WARN --> PROMPT
+    DATA --> PROMPT
+    
+    PROMPT --> ANALYSIS
+    
+    ANALYSIS --> SUMMARY
+    ANALYSIS --> LEVEL
+    ANALYSIS --> ACTIONS
+```
+
+### 3.3 Prompt Engineering
 
 ```python
 RISK_ANALYSIS_SYSTEM_PROMPT = """
@@ -152,9 +261,27 @@ Format response as JSON:
 """
 ```
 
-### 3.3 Fallback Strategy
+### 3.4 Fallback Strategy
 
-When LLM is unavailable, the system uses rule-based analysis:
+```mermaid
+flowchart TD
+    START[Risk Analysis Request]
+    LLM_CHECK{LLM Available?}
+    LLM_CALL[Call OpenAI API]
+    LLM_SUCCESS{Success?}
+    RULE_BASED[Rule-Based Analysis]
+    RETURN[Return Analysis]
+    
+    START --> LLM_CHECK
+    LLM_CHECK -->|Yes| LLM_CALL
+    LLM_CHECK -->|No| RULE_BASED
+    LLM_CALL --> LLM_SUCCESS
+    LLM_SUCCESS -->|Yes| RETURN
+    LLM_SUCCESS -->|No| RULE_BASED
+    RULE_BASED --> RETURN
+```
+
+When LLM is unavailable, the system uses deterministic rule-based analysis:
 
 ```python
 def _rule_based_analyze(state: dict) -> dict:
@@ -170,15 +297,6 @@ def _rule_based_analyze(state: dict) -> dict:
         risk_level = "medium"
     else:
         risk_level = "low"
-    
-    # Generate recommendations from patterns
-    recommendations = []
-    if "account" in violations:
-        recommendations.append({
-            "action": "Verify account in Salesforce",
-            "owner": "Sales Operations"
-        })
-    # ... more patterns
 ```
 
 ---
@@ -187,39 +305,72 @@ def _rule_based_analyze(state: dict) -> dict:
 
 ### 4.1 LangGraph State Machine
 
-```python
-graph = StateGraph(AgentState)
-
-# Define nodes
-graph.add_node("init", init_node)
-graph.add_node("fetch_salesforce", fetch_salesforce_data)
-graph.add_node("fetch_clm", fetch_clm_data)
-graph.add_node("fetch_invoice", fetch_invoice_data)
-graph.add_node("validate", validate_data)
-graph.add_node("analyze_risks", analyze_risks_node)
-graph.add_node("make_decision", make_decision)
-graph.add_node("send_notifications", send_notifications)
-graph.add_node("provision", provision_account)
-graph.add_node("generate_summary", generate_summary_node)
-
-# Define edges
-graph.set_entry_point("init")
-graph.add_edge("init", "fetch_salesforce")
-graph.add_edge("fetch_salesforce", "fetch_clm")
-# ... linear flow through data fetching
-
-# Conditional routing based on decision
-graph.add_conditional_edges(
-    "make_decision",
-    router.after_decision,
-    {
-        "send_notifications": "send_notifications",  # BLOCK or ESCALATE
-        "provision": "provision",                     # PROCEED
+```mermaid
+stateDiagram-v2
+    [*] --> init: Webhook Trigger
+    
+    init --> fetch_salesforce: Create Correlation ID
+    
+    state "Data Fetching" as fetching {
+        fetch_salesforce --> fetch_clm
+        fetch_clm --> fetch_invoice
     }
-)
+    
+    fetch_invoice --> validate: All Data Collected
+    validate --> analyze_risks: Run Invariants
+    analyze_risks --> make_decision: LLM Analysis
+    
+    state decision_fork <<choice>>
+    make_decision --> decision_fork
+    
+    decision_fork --> send_notifications: BLOCK
+    decision_fork --> send_notifications: ESCALATE
+    decision_fork --> provision_account: PROCEED
+    
+    provision_account --> send_notifications
+    send_notifications --> generate_summary
+    
+    generate_summary --> [*]: Complete
 ```
 
-### 4.2 Webhook Integration
+### 4.2 Event Types
+
+```mermaid
+flowchart LR
+    subgraph Sources["Event Sources"]
+        SF[Salesforce]
+        CLM[CLM System]
+        NS[NetSuite]
+        USER[User/API]
+        SCHEDULER[Scheduler]
+    end
+    
+    subgraph Events["Event Types"]
+        OPP_WON[opportunity.closed_won]
+        CONTRACT_EXEC[contract.executed]
+        INV_PAID[invoice.paid]
+        MANUAL[manual.trigger]
+        SCHEDULED[scheduled.check]
+    end
+    
+    subgraph Agent["Onboarding Agent"]
+        PROCESS[Process Event]
+    end
+    
+    SF --> OPP_WON
+    CLM --> CONTRACT_EXEC
+    NS --> INV_PAID
+    USER --> MANUAL
+    SCHEDULER --> SCHEDULED
+    
+    OPP_WON --> PROCESS
+    CONTRACT_EXEC --> PROCESS
+    INV_PAID --> PROCESS
+    MANUAL --> PROCESS
+    SCHEDULED --> PROCESS
+```
+
+### 4.3 Webhook Integration
 
 ```python
 @router.post("/webhook/onboarding")
@@ -238,21 +389,28 @@ async def onboarding_webhook(event: TriggerEvent):
     return OnboardingResponse(...)
 ```
 
-### 4.3 Event Types
-
-| Event | Source | Trigger Condition |
-|-------|--------|-------------------|
-| `opportunity.closed_won` | Salesforce | Opportunity stage changes to Closed Won |
-| `contract.executed` | CLM | All signatures collected |
-| `invoice.paid` | NetSuite | Payment received |
-| `manual.trigger` | API | Manual re-run request |
-| `scheduled.check` | Cron | Daily stale onboarding check |
-
 ---
 
 ## 5. Trade-offs, Assumptions & Considerations
 
 ### 5.1 Design Trade-offs
+
+```mermaid
+quadrantChart
+    title Design Decision Trade-offs
+    x-axis Low Complexity --> High Complexity
+    y-axis Low Value --> High Value
+    quadrant-1 Implement Now
+    quadrant-2 Consider Carefully
+    quadrant-3 Avoid
+    quadrant-4 Quick Wins
+    
+    LangGraph: [0.7, 0.9]
+    Mock APIs: [0.2, 0.6]
+    LLM Fallback: [0.4, 0.8]
+    Sync Processing: [0.3, 0.5]
+    Message Queues: [0.8, 0.7]
+```
 
 | Decision | Trade-off | Rationale |
 |----------|-----------|-----------|
@@ -261,23 +419,32 @@ async def onboarding_webhook(event: TriggerEvent):
 | **Rule-based Fallback** | Less intelligent, always available | Ensures system works without LLM connectivity |
 | **Mock APIs vs. Real** | Not production-ready, fast iteration | Allows demo without credentials |
 
-### 5.2 Assumptions
+### 5.2 Scalability Considerations
 
-1. **Account ID Mapping**: All systems use consistent account identifiers
-2. **API Availability**: External APIs are generally available (error handling for failures)
-3. **Permission Model**: Service accounts have necessary permissions
-4. **Data Freshness**: Data fetched at runtime is current enough for decisions
+```mermaid
+flowchart TB
+    subgraph Current["Current (Demo)"]
+        SYNC[Synchronous Processing]
+        MEMORY[In-Memory State]
+        SINGLE[Single Instance]
+    end
+    
+    subgraph Production["Production Ready"]
+        ASYNC[Message Queue<br/>SQS/RabbitMQ]
+        REDIS[Distributed State<br/>Redis]
+        K8S[Horizontal Scaling<br/>Kubernetes]
+        CACHE[LLM Response Cache]
+    end
+    
+    SYNC -.->|migrate to| ASYNC
+    MEMORY -.->|migrate to| REDIS
+    SINGLE -.->|scale to| K8S
+    
+    style Current fill:#fff3cd
+    style Production fill:#d4edda
+```
 
-### 5.3 Scalability Considerations
-
-| Concern | Solution |
-|---------|----------|
-| **High Volume** | Message queue (SQS/RabbitMQ) for async processing |
-| **API Rate Limits** | Request pooling, exponential backoff |
-| **LLM Latency** | Caching, parallel requests, fallback to rules |
-| **State Management** | Redis for distributed state, PostgreSQL for persistence |
-
-### 5.4 Security Considerations
+### 5.3 Security Considerations
 
 | Concern | Implementation |
 |---------|---------------|
@@ -291,43 +458,79 @@ async def onboarding_webhook(event: TriggerEvent):
 
 ## 6. Multi-Agent Collaboration & MCP
 
-### 6.1 Model Context Protocol (MCP) Overview
+### 6.1 Model Context Protocol (MCP) Architecture
 
-MCP enables multiple AI agents to collaborate by exposing **tools** through standardized servers:
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                      MCP ARCHITECTURE                                │
-│                                                                      │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐          │
-│  │  Onboarding  │    │   Contract   │    │   Finance    │          │
-│  │    Agent     │    │    Agent     │    │    Agent     │          │
-│  └──────┬───────┘    └──────┬───────┘    └──────┬───────┘          │
-│         │                   │                   │                   │
-│         └───────────────────┴───────────────────┘                   │
-│                             │                                        │
-│                             ▼                                        │
-│                    ┌─────────────────┐                              │
-│                    │   MCP Router    │                              │
-│                    └────────┬────────┘                              │
-│                             │                                        │
-│         ┌───────────────────┼───────────────────┐                   │
-│         ▼                   ▼                   ▼                   │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐             │
-│  │ Salesforce  │    │  NetSuite   │    │    CLM      │             │
-│  │ MCP Server  │    │ MCP Server  │    │ MCP Server  │             │
-│  └─────────────┘    └─────────────┘    └─────────────┘             │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Agents["🤖 AI Agents"]
+        ONBOARD[Onboarding<br/>Coordinator]
+        CONTRACT[Contract<br/>Agent]
+        FINANCE[Finance<br/>Agent]
+        RISK[Risk Analyzer<br/>Agent]
+    end
+    
+    subgraph MCPRouter["🔀 MCP Router"]
+        ROUTER[Tool Router]
+    end
+    
+    subgraph MCPServers["🔧 MCP Servers"]
+        SF_MCP[Salesforce<br/>MCP Server]
+        NS_MCP[NetSuite<br/>MCP Server]
+        CLM_MCP[CLM<br/>MCP Server]
+        LLM_MCP[LLM<br/>MCP Server]
+    end
+    
+    subgraph APIs["🌐 External APIs"]
+        SF_API[Salesforce API]
+        NS_API[NetSuite API]
+        CLM_API[CLM API]
+        OAI_API[OpenAI API]
+    end
+    
+    ONBOARD <--> ROUTER
+    CONTRACT <--> ROUTER
+    FINANCE <--> ROUTER
+    RISK <--> ROUTER
+    
+    ROUTER <--> SF_MCP
+    ROUTER <--> NS_MCP
+    ROUTER <--> CLM_MCP
+    ROUTER <--> LLM_MCP
+    
+    SF_MCP <--> SF_API
+    NS_MCP <--> NS_API
+    CLM_MCP <--> CLM_API
+    LLM_MCP <--> OAI_API
 ```
 
 ### 6.2 Agent Specialization
 
-| Agent | Responsibility | MCP Tools |
-|-------|---------------|-----------|
-| **Onboarding Coordinator** | Orchestrates workflow, makes decisions | `salesforce.get_account`, `provision.create_tenant` |
-| **Contract Agent** | Monitors signatures, sends reminders | `clm.get_contract`, `clm.send_reminder` |
-| **Finance Agent** | Tracks payments, escalates overdue | `netsuite.get_invoice`, `netsuite.send_dunning` |
-| **Risk Analyzer** | Generates risk assessments | `llm.analyze_risks`, `llm.generate_summary` |
+```mermaid
+flowchart LR
+    subgraph OnboardingAgent["Onboarding Coordinator"]
+        OA_ROLE[Orchestrates workflow]
+        OA_TOOLS[salesforce.get_account<br/>provision.create_tenant]
+    end
+    
+    subgraph ContractAgent["Contract Agent"]
+        CA_ROLE[Monitors signatures]
+        CA_TOOLS[clm.get_contract<br/>clm.send_reminder]
+    end
+    
+    subgraph FinanceAgent["Finance Agent"]
+        FA_ROLE[Tracks payments]
+        FA_TOOLS[netsuite.get_invoice<br/>netsuite.send_dunning]
+    end
+    
+    subgraph RiskAgent["Risk Analyzer"]
+        RA_ROLE[Generates assessments]
+        RA_TOOLS[llm.analyze_risks<br/>llm.generate_summary]
+    end
+    
+    OnboardingAgent <-->|delegates| ContractAgent
+    OnboardingAgent <-->|delegates| FinanceAgent
+    OnboardingAgent <-->|consults| RiskAgent
+```
 
 ### 6.3 Example MCP Tool Definition
 
@@ -348,96 +551,105 @@ MCP enables multiple AI agents to collaborate by exposing **tools** through stan
 }
 ```
 
-### 6.4 Inter-Agent Communication
-
-```python
-# Onboarding Agent delegates to Contract Agent
-async def check_contract_status(account_id: str):
-    # Call Contract Agent via MCP
-    result = await mcp_client.call_tool(
-        server="contract-agent",
-        tool="check_and_remind",
-        params={"account_id": account_id}
-    )
-    return result
-```
-
 ---
 
 ## 7. Security & Governance
 
 ### 7.1 Authentication Flow
 
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Client    │────▶│   Agent     │────▶│  External   │
-│   Request   │     │   Server    │     │    API      │
-└─────────────┘     └──────┬──────┘     └─────────────┘
-                           │
-                    ┌──────▼──────┐
-                    │  Validate   │
-                    │ Credentials │
-                    │             │
-                    │ • API Key   │
-                    │ • JWT Token │
-                    │ • OAuth     │
-                    └──────┬──────┘
-                           │
-                    ┌──────▼──────┐
-                    │   Check     │
-                    │ Permissions │
-                    └─────────────┘
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Agent
+    participant AuthService
+    participant ExternalAPI
+    
+    Client->>Agent: Request + API Key
+    Agent->>Agent: Validate API Key
+    
+    alt Invalid Key
+        Agent-->>Client: 401 Unauthorized
+    else Valid Key
+        Agent->>AuthService: Get OAuth Token
+        AuthService-->>Agent: Access Token
+        Agent->>ExternalAPI: Request + Bearer Token
+        ExternalAPI-->>Agent: Response
+        Agent-->>Client: Processed Response
+    end
 ```
 
 ### 7.2 Error Handling Matrix
 
-| Error Type | HTTP Code | Agent Response |
-|------------|-----------|----------------|
-| Auth Invalid | 401 | Log error, add to warnings, continue if possible |
-| Permission Denied | 403 | Add violation, block onboarding |
-| Validation Error | 400 | Add violation with details |
-| Not Found | 404 | Add warning, continue with available data |
-| Rate Limited | 429 | Retry with backoff |
-| Server Error | 500 | Log, retry once, then add warning |
+```mermaid
+flowchart TD
+    subgraph Errors["API Errors"]
+        E401[401 Auth Invalid]
+        E403[403 Permission Denied]
+        E400[400 Validation Error]
+        E404[404 Not Found]
+        E429[429 Rate Limited]
+        E500[500 Server Error]
+    end
+    
+    subgraph Actions["Agent Actions"]
+        LOG[Log Error]
+        WARN[Add Warning]
+        VIOL[Add Violation]
+        RETRY[Retry with Backoff]
+        CONTINUE[Continue Processing]
+    end
+    
+    E401 --> LOG --> WARN --> CONTINUE
+    E403 --> LOG --> VIOL
+    E400 --> LOG --> VIOL
+    E404 --> LOG --> WARN --> CONTINUE
+    E429 --> LOG --> RETRY
+    E500 --> LOG --> RETRY
+```
 
 ### 7.3 Audit Requirements
 
 Every run produces:
 1. **Structured Logs**: JSON with correlation ID, timestamps, decisions
-2. **Run Report**: Markdown/HTML summary of actions taken
-3. **Email Audit**: HTML emails sent to stakeholders
-4. **State Snapshot**: Complete state at each decision point
+2. **LangSmith Traces**: Full execution traces with LLM calls
+3. **Run Report**: Markdown/HTML summary of actions taken
+4. **Email Audit**: HTML emails sent to stakeholders
+5. **State Snapshot**: Complete state at each decision point
 
 ---
 
 ## 8. Production Roadmap
 
-### 8.1 Phase 1: Foundation (Current)
-- ✅ LangGraph orchestration
-- ✅ Mock API integrations
-- ✅ LLM risk analysis
-- ✅ Error handling
-- ✅ Demo scenarios
-
-### 8.2 Phase 2: Production Hardening
-- [ ] Real API integrations (OAuth flows)
-- [ ] Message queue for async processing
-- [ ] Redis for distributed state
-- [ ] Prometheus metrics
-- [ ] DataDog/Jaeger tracing
-
-### 8.3 Phase 3: Advanced Features
-- [ ] Human-in-the-loop approval workflows
-- [ ] Scheduled monitoring for stale onboardings
-- [ ] ML-based anomaly detection
-- [ ] Multi-tenant support
-- [ ] Self-service customer portal integration
-
-### 8.4 Phase 4: Multi-Agent Expansion
-- [ ] MCP server implementation
-- [ ] Specialized agents (Contract, Finance, Support)
-- [ ] Agent coordination protocols
-- [ ] Cross-agent learning
+```mermaid
+timeline
+    title Production Roadmap
+    
+    section Phase 1 - Foundation (Current)
+        Demo Ready : LangGraph orchestration
+                   : Mock API integrations
+                   : LLM risk analysis
+                   : Error handling
+                   : LangSmith tracing
+    
+    section Phase 2 - Production Hardening
+        Q2 2025 : Real API integrations (OAuth flows)
+                : Message queue (SQS/RabbitMQ)
+                : Redis for distributed state
+                : Prometheus metrics
+                : DataDog/Jaeger tracing
+    
+    section Phase 3 - Advanced Features
+        Q3 2025 : Human-in-the-loop approvals
+                : Scheduled monitoring
+                : ML anomaly detection
+                : Multi-tenant support
+    
+    section Phase 4 - Multi-Agent
+        Q4 2025 : MCP server implementation
+                : Specialized agents
+                : Agent coordination protocols
+                : Cross-agent learning
+```
 
 ---
 
@@ -451,7 +663,7 @@ Every run produces:
 | `INSUFFICIENT_ACCESS` | Permission denied |
 | `FIELD_CUSTOM_VALIDATION_EXCEPTION` | Field validation failed |
 | `REQUIRED_FIELD_MISSING` | Required field not provided |
-| `NOT_FOUND` | Record doesn't exist |
+| `REQUEST_LIMIT_EXCEEDED` | API rate limit exceeded |
 
 ### NetSuite
 
@@ -477,15 +689,15 @@ Every run produces:
 
 ## Appendix B: Demo Scenarios
 
-| ID | Scenario | Expected Decision |
-|----|----------|-------------------|
-| ACME-001 | Happy path - all systems green | ✅ PROCEED |
-| BETA-002 | Opportunity not won | 🚫 BLOCK |
-| GAMMA-003 | Invoice overdue | ⚠️ ESCALATE |
-| DELETED-004 | Account deleted | 🚫 BLOCK |
-| AUTH-ERROR | API authentication failure | 🚫 BLOCK |
-| PERM-ERROR | API permission denied | 🚫 BLOCK |
-| SERVER-ERROR | API server error | 🚫 BLOCK |
+| ID | Scenario | Expected Decision | Description |
+|----|----------|-------------------|-------------|
+| ACME-001 | Happy path | ✅ PROCEED | All systems green |
+| BETA-002 | Opportunity not won | 🚫 BLOCK | Stage ≠ Closed Won |
+| GAMMA-003 | Invoice overdue | ⚠️ ESCALATE | Payment issue |
+| DELETED-004 | Account deleted | 🚫 BLOCK | IsDeleted = true |
+| AUTH-ERROR | API auth failure | 🚫 BLOCK | 401 Unauthorized |
+| PERM-ERROR | Permission denied | 🚫 BLOCK | 403 Forbidden |
+| SERVER-ERROR | Server error | 🚫 BLOCK | 500 Internal Error |
 
 ---
 

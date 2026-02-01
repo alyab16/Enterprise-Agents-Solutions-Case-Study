@@ -1,0 +1,79 @@
+{
+  "correlation_id": "626f5ea4-7e4d-423f-9e81-4137c34481c0",
+  "account_id": "BETA-002",
+  "account_name": "Beta Industries",
+  "decision": "BLOCK",
+  "stage": "complete",
+  "timestamp": "2026-02-01T00:57:54.754500",
+  "risk_analysis": {
+    "summary": "Beta Industries is currently in the negotiation stage with an overdue invoice and a draft contract, which poses significant onboarding challenges.",
+    "risk_level": "critical",
+    "risks": [
+      {
+        "issue": "Opportunity not won, still in negotiation stage",
+        "impact": "Delays in revenue recognition and potential loss of the account if negotiations fail.",
+        "urgency": "high"
+      },
+      {
+        "issue": "Contract remains in draft status",
+        "impact": "Inability to formalize the agreement, which could hinder project initiation and client commitment.",
+        "urgency": "high"
+      },
+      {
+        "issue": "Overdue invoice with no payments received",
+        "impact": "Cash flow issues and potential reputational damage if not addressed promptly.",
+        "urgency": "high"
+      }
+    ],
+    "recommended_actions": [
+      {
+        "action": "Escalate the overdue invoice to Finance for immediate resolution.",
+        "owner": "Finance",
+        "priority": 1
+      },
+      {
+        "action": "Engage with the client to finalize the contract and move the opportunity to the next stage.",
+        "owner": "Customer Success",
+        "priority": 2
+      },
+      {
+        "action": "Review negotiation terms and identify any blockers that may prevent closing the opportunity.",
+        "owner": "Sales",
+        "priority": 3
+      }
+    ],
+    "estimated_resolution_time": "2-4 weeks",
+    "can_proceed_with_warnings": false
+  },
+  "violations": {
+    "opportunity": [
+      "Opportunity not won (stage: Negotiation)"
+    ]
+  },
+  "warnings": {
+    "contract": [
+      "Contract still in Draft status"
+    ],
+    "invoice": [
+      "Invoice INV-2024-002 is 717 days overdue ($84,750.00 outstanding) - escalate to Finance",
+      "Less than 50% of invoice paid (0%)"
+    ]
+  },
+  "api_errors": [],
+  "actions_taken": [],
+  "notifications_sent": [
+    {
+      "channel": "slack",
+      "recipient": "#cs-onboarding-alerts",
+      "message": "Blocked notification sent for Beta Industries",
+      "type": "slack"
+    },
+    {
+      "channel": "slack",
+      "recipient": "#finance-alerts",
+      "message": "Overdue invoice escalation for Beta Industries",
+      "type": "slack"
+    }
+  ],
+  "provisioning": null
+}

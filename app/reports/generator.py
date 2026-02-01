@@ -12,9 +12,12 @@ import json
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
+from pathlib import Path
 
-# Output directory for generated reports
-REPORTS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "reports_output")
+# Output directory for generated reports - use absolute path
+_current_file = Path(__file__).resolve()
+_project_root = _current_file.parent.parent.parent
+REPORTS_DIR = str(_project_root / "reports_output")
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
 
@@ -302,6 +305,93 @@ def generate_customer_welcome_email(
     )
 
 
+def generate_api_error_notification_email(
+    account_name: str,
+    account_id: str,
+    api_errors: List[Dict[str, Any]],
+    correlation_id: str,
+) -> str:
+    """Generate HTML email for API integration error notification."""
+    
+    # Build error details
+    errors_html = ""
+    for i, error in enumerate(api_errors, 1):
+        system = error.get("system", "unknown").upper()
+        error_type = error.get("error_type", "unknown").replace("_", " ").title()
+        error_code = error.get("error_code", "UNKNOWN")
+        http_status = error.get("http_status", 0)
+        message = error.get("message", "No message")
+        description = error.get("description", message)
+        resolution = error.get("resolution", "Contact the integration administrator.")
+        owner = error.get("owner", "Support Team")
+        
+        errors_html += f"""
+        <div style="background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 15px; margin-bottom: 15px;">
+            <h4 style="margin: 0 0 10px 0; color: #856404;">🔌 {system} Integration Error</h4>
+            <table style="width: 100%; font-size: 14px;">
+                <tr><td style="padding: 4px 0; width: 120px;"><strong>Error Type:</strong></td><td>{error_type}</td></tr>
+                <tr><td style="padding: 4px 0;"><strong>Error Code:</strong></td><td><code style="background: #f4f4f4; padding: 2px 6px; border-radius: 3px;">{error_code}</code></td></tr>
+                <tr><td style="padding: 4px 0;"><strong>HTTP Status:</strong></td><td>{http_status}</td></tr>
+            </table>
+            <div style="margin-top: 10px; padding: 10px; background-color: #fff; border-radius: 4px;">
+                <p style="margin: 0 0 5px 0;"><strong>What This Means:</strong></p>
+                <p style="margin: 0; color: #555;">{description}</p>
+            </div>
+            <div style="margin-top: 10px; padding: 10px; background-color: #d4edda; border-radius: 4px;">
+                <p style="margin: 0 0 5px 0;"><strong>How to Fix:</strong></p>
+                <p style="margin: 0; color: #155724;">{resolution}</p>
+                <p style="margin: 5px 0 0 0; font-size: 12px; color: #888;"><em>Responsible: {owner}</em></p>
+            </div>
+        </div>
+        """
+    
+    sections = [
+        {
+            "title": "⚠️ API Integration Error",
+            "content": f"""
+                <div style="background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; padding: 15px; margin-bottom: 15px;">
+                    <p style="margin: 0; color: #721c24;">
+                        The onboarding process for <strong>{account_name}</strong> has been blocked due to API integration errors.
+                        These are typically temporary issues or configuration problems that can be resolved.
+                    </p>
+                </div>
+            """
+        },
+        {
+            "title": "🔍 Error Details",
+            "content": errors_html
+        },
+        {
+            "title": "📋 Immediate Actions Required",
+            "content": """
+                <ol style="margin: 0; padding-left: 20px;">
+                    <li style="margin: 8px 0;"><strong>Check system status</strong> - Verify if the external system is experiencing outages</li>
+                    <li style="margin: 8px 0;"><strong>Verify credentials</strong> - Ensure API tokens and credentials are valid and not expired</li>
+                    <li style="margin: 8px 0;"><strong>Check permissions</strong> - Confirm the integration user has required permissions</li>
+                    <li style="margin: 8px 0;"><strong>Retry the operation</strong> - If it's a temporary error, retry after a few minutes</li>
+                </ol>
+            """
+        },
+        {
+            "title": "🔗 Quick Links",
+            "content": f"""
+                <p>
+                    <a href="https://agent.example.com/runs/{correlation_id}" style="color: #667eea; text-decoration: none;">View Agent Run</a> |
+                    <a href="https://integrations.example.com/status" style="color: #667eea; text-decoration: none;">Integration Status</a> |
+                    <a href="https://docs.example.com/troubleshooting" style="color: #667eea; text-decoration: none;">Troubleshooting Guide</a>
+                </p>
+            """
+        }
+    ]
+    
+    return generate_email_html(
+        to="integration-alerts@stackadapt.com",
+        subject=f"⚠️ API Integration Error - {account_name} Onboarding Blocked",
+        body_sections=sections,
+        footer_text="This alert was generated by the Enterprise Onboarding Agent. Contact the integration team if the issue persists."
+    )
+
+
 # ============================================================================
 # MARKDOWN REPORT GENERATOR
 # ============================================================================
@@ -318,14 +408,55 @@ def generate_run_report_markdown(
     actions_taken: List[Dict[str, Any]],
     notifications_sent: List[Dict[str, Any]],
     provisioning: Optional[Dict[str, Any]],
+    api_errors: List[Dict[str, Any]] = None,
     duration_ms: int = 0,
 ) -> str:
     """Generate a detailed Markdown report for an onboarding run."""
     
     timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+    api_errors = api_errors or []
     
     # Decision emoji
     decision_emoji = {"PROCEED": "✅", "ESCALATE": "⚠️", "BLOCK": "🚫"}.get(decision, "❓")
+    
+    # Check if this is an error scenario
+    is_error_scenario = len(api_errors) > 0
+    
+    # Build API errors section (if any)
+    api_errors_md = ""
+    if api_errors:
+        api_errors_md = "\n---\n\n## ⚠️ API Integration Errors\n\n"
+        api_errors_md += "> **This run failed due to API integration errors.** The issues below must be resolved before onboarding can proceed.\n\n"
+        
+        for i, error in enumerate(api_errors, 1):
+            system = error.get("system", "unknown").upper()
+            error_type = error.get("error_type", "unknown")
+            error_code = error.get("error_code", "UNKNOWN")
+            message = error.get("message", "No message")
+            http_status = error.get("http_status", 0)
+            description = error.get("description", "")
+            resolution = error.get("resolution", "")
+            owner = error.get("owner", "Support Team")
+            
+            api_errors_md += f"""### Error {i}: {system} - {error_type.replace('_', ' ').title()}
+
+| Field | Value |
+|-------|-------|
+| **System** | {system} |
+| **Error Type** | {error_type.replace('_', ' ').title()} |
+| **Error Code** | `{error_code}` |
+| **HTTP Status** | {http_status} |
+| **Message** | {message} |
+
+**What This Means:**
+{description or message}
+
+**How to Fix:**
+{resolution or "Contact the integration administrator for assistance."}
+
+**Responsible Team:** {owner}
+
+"""
     
     # Build violations section
     violations_md = ""
@@ -389,6 +520,11 @@ def generate_run_report_markdown(
     if not recommended_actions_md:
         recommended_actions_md = "_None_"
     
+    # Determine scenario type for header
+    scenario_type = ""
+    if is_error_scenario:
+        scenario_type = "\n\n> ⚠️ **API ERROR SCENARIO**: This run encountered integration failures. See the API Integration Errors section below for details and resolution steps.\n"
+    
     markdown = f"""# Onboarding Run Report
 
 ## Summary
@@ -402,7 +538,8 @@ def generate_run_report_markdown(
 | **Final Stage** | {stage} |
 | **Risk Level** | {risk_level} |
 | **Duration** | {duration_ms}ms |
-
+| **API Errors** | {len(api_errors)} |
+{scenario_type}
 ---
 
 ## Risk Analysis
@@ -412,7 +549,7 @@ def generate_run_report_markdown(
 
 ### Recommended Actions
 {recommended_actions_md}
-
+{api_errors_md}
 ---
 
 ## Validation Results
@@ -498,6 +635,7 @@ def generate_full_run_report(state: Dict[str, Any]) -> Dict[str, str]:
     account_name = account.get("Name", account_id)
     correlation_id = state.get("correlation_id", "unknown")
     decision = state.get("decision", "UNKNOWN")
+    api_errors = state.get("api_errors", [])
     timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
     
     generated_files = {}
@@ -515,6 +653,7 @@ def generate_full_run_report(state: Dict[str, Any]) -> Dict[str, str]:
         actions_taken=state.get("actions_taken", []),
         notifications_sent=state.get("notifications_sent", []),
         provisioning=state.get("provisioning"),
+        api_errors=api_errors,
     )
     generated_files["markdown"] = save_report_markdown(
         f"run_report_{account_id}_{timestamp}.md",
@@ -523,18 +662,31 @@ def generate_full_run_report(state: Dict[str, Any]) -> Dict[str, str]:
     
     # Generate appropriate email based on decision
     if decision == "BLOCK":
-        email_html = generate_blocked_notification_email(
-            account_name=account_name,
-            account_id=account_id,
-            violations=state.get("violations", {}),
-            warnings=state.get("warnings", {}),
-            recommended_actions=state.get("risk_analysis", {}).get("recommended_actions", []),
-            correlation_id=correlation_id,
-        )
-        generated_files["email_html"] = save_email_html(
-            f"email_blocked_{account_id}_{timestamp}.html",
-            email_html
-        )
+        # Check if it's an API error scenario
+        if api_errors:
+            email_html = generate_api_error_notification_email(
+                account_name=account_name,
+                account_id=account_id,
+                api_errors=api_errors,
+                correlation_id=correlation_id,
+            )
+            generated_files["email_html"] = save_email_html(
+                f"email_api_error_{account_id}_{timestamp}.html",
+                email_html
+            )
+        else:
+            email_html = generate_blocked_notification_email(
+                account_name=account_name,
+                account_id=account_id,
+                violations=state.get("violations", {}),
+                warnings=state.get("warnings", {}),
+                recommended_actions=state.get("risk_analysis", {}).get("recommended_actions", []),
+                correlation_id=correlation_id,
+            )
+            generated_files["email_html"] = save_email_html(
+                f"email_blocked_{account_id}_{timestamp}.html",
+                email_html
+            )
     
     elif decision == "PROCEED":
         provisioning = state.get("provisioning", {})
@@ -566,7 +718,7 @@ def generate_full_run_report(state: Dict[str, Any]) -> Dict[str, str]:
             welcome_html
         )
     
-    # Save audit JSON
+    # Save audit JSON with API errors
     audit_data = {
         "correlation_id": correlation_id,
         "account_id": account_id,
@@ -577,6 +729,7 @@ def generate_full_run_report(state: Dict[str, Any]) -> Dict[str, str]:
         "risk_analysis": state.get("risk_analysis"),
         "violations": state.get("violations"),
         "warnings": state.get("warnings"),
+        "api_errors": api_errors,  # Include API errors in audit
         "actions_taken": state.get("actions_taken"),
         "notifications_sent": state.get("notifications_sent"),
         "provisioning": state.get("provisioning"),

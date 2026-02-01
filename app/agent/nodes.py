@@ -4,7 +4,7 @@ Each node performs a specific task and updates the agent state.
 """
 
 from app.agent.state import AgentState
-from app.agent.state_utils import record_action, record_notification
+from app.agent.state_utils import record_action, record_notification, add_api_error, add_violation
 from app.integrations import salesforce, clm, netsuite, provisioning
 from app.agent.invariants import (
     check_account_invariants,
@@ -31,6 +31,7 @@ def init_node(state: AgentState) -> AgentState:
     state["warnings"] = {}
     state["actions_taken"] = []
     state["notifications_sent"] = []
+    state["api_errors"] = []  # Initialize API errors list
     
     return state
 
@@ -47,8 +48,43 @@ def fetch_salesforce_data(state: AgentState) -> AgentState:
     )
     state["stage"] = "fetching_salesforce"
     
-    # Fetch account
+    # Fetch account - check for error scenarios
     account = salesforce.get_account(account_id)
+    
+    # Check if the account fetch returned an error indicator
+    if account is None and account_id in ["AUTH-ERROR", "PERM-ERROR", "SERVER-ERROR"]:
+        # These are error simulation accounts - record the API error
+        error_map = {
+            "AUTH-ERROR": {
+                "error_type": "authentication",
+                "error_code": "INVALID_SESSION_ID",
+                "message": "Session expired or invalid",
+                "http_status": 401,
+            },
+            "PERM-ERROR": {
+                "error_type": "authorization",
+                "error_code": "INSUFFICIENT_ACCESS",
+                "message": "Insufficient privileges to access Account",
+                "http_status": 403,
+            },
+            "SERVER-ERROR": {
+                "error_type": "server",
+                "error_code": "SERVER_ERROR",
+                "message": "Service temporarily unavailable",
+                "http_status": 500,
+            },
+        }
+        error_info = error_map.get(account_id, {})
+        add_api_error(
+            state,
+            system="salesforce",
+            error_type=error_info.get("error_type", "server"),
+            error_code=error_info.get("error_code", "UNKNOWN"),
+            message=error_info.get("message", "Unknown error"),
+            http_status=error_info.get("http_status", 500),
+            details={"account_id": account_id, "operation": "get_account"}
+        )
+    
     state["account"] = account
     
     if account:
@@ -69,6 +105,7 @@ def fetch_salesforce_data(state: AgentState) -> AgentState:
         has_account=account is not None,
         has_opportunity=state.get("opportunity") is not None,
         has_contract=state.get("contract") is not None,
+        api_errors=len(state.get("api_errors", [])),
     )
     
     return state
@@ -89,10 +126,31 @@ def fetch_clm_data(state: AgentState) -> AgentState:
     clm_data = clm.get_contract(account_id)
     state["clm"] = clm_data
     
+    # Check for CLM API errors
+    clm_status = clm_data.get("status", "")
+    if clm_status in ["AUTH_ERROR", "PERMISSION_ERROR", "SERVER_ERROR", "API_ERROR"]:
+        error_type_map = {
+            "AUTH_ERROR": ("authentication", "UNAUTHORIZED", 401),
+            "PERMISSION_ERROR": ("authorization", "FORBIDDEN", 403),
+            "SERVER_ERROR": ("server", "INTERNAL_ERROR", 500),
+            "API_ERROR": ("server", "API_ERROR", 500),
+        }
+        error_type, error_code, http_status = error_type_map.get(clm_status, ("server", "UNKNOWN", 500))
+        add_api_error(
+            state,
+            system="clm",
+            error_type=error_type,
+            error_code=error_code,
+            message=clm_data.get("error", "CLM API error"),
+            http_status=http_status,
+            details={"account_id": account_id, "operation": "get_contract"}
+        )
+    
     log_event(
         "clm.fetched",
         account_id=account_id,
-        clm_status=clm_data.get("status"),
+        clm_status=clm_status,
+        api_errors=len(state.get("api_errors", [])),
     )
     
     return state
@@ -113,10 +171,36 @@ def fetch_invoice_data(state: AgentState) -> AgentState:
     invoice = netsuite.get_invoice(account_id)
     state["invoice"] = invoice
     
+    # Check for NetSuite API errors
+    invoice_status = invoice.get("status", "")
+    if invoice_status in ["AUTH_ERROR", "PERMISSION_ERROR", "VALIDATION_ERROR", "SERVER_ERROR", "API_ERROR"]:
+        error_type_map = {
+            "AUTH_ERROR": ("authentication", "INVALID_LOGIN", 401),
+            "PERMISSION_ERROR": ("authorization", "INSUFFICIENT_PERMISSION", 403),
+            "VALIDATION_ERROR": ("validation", "INVALID_FIELD_VALUE", 400),
+            "SERVER_ERROR": ("server", "UNEXPECTED_ERROR", 500),
+            "API_ERROR": ("server", "API_ERROR", 500),
+        }
+        error_type, error_code, http_status = error_type_map.get(invoice_status, ("server", "UNKNOWN", 500))
+        add_api_error(
+            state,
+            system="netsuite",
+            error_type=error_type,
+            error_code=error_code,
+            message=invoice.get("error", "NetSuite API error"),
+            http_status=http_status,
+            details={
+                "account_id": account_id,
+                "operation": "get_invoice",
+                "error_details": invoice.get("error_details", {})
+            }
+        )
+    
     log_event(
         "invoice.fetched",
         account_id=account_id,
-        invoice_status=invoice.get("status"),
+        invoice_status=invoice_status,
+        api_errors=len(state.get("api_errors", [])),
     )
     
     return state

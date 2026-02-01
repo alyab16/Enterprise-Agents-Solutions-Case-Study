@@ -1,0 +1,87 @@
+{
+  "correlation_id": "80e28315-7e43-48b9-aadd-2065dffe24a8",
+  "account_id": "GAMMA-003",
+  "account_name": "Gamma Startup",
+  "decision": "ESCALATE",
+  "stage": "complete",
+  "timestamp": "2026-02-01T00:58:02.127758",
+  "risk_analysis": {
+    "summary": "Gamma Startup's onboarding is facing significant issues, including an overdue invoice and an unapproved contract without an assigned owner, which could hinder the onboarding process.",
+    "risk_level": "critical",
+    "risks": [
+      {
+        "issue": "Overdue invoice of $25,000 with no payments received",
+        "impact": "Potential cash flow issues and customer dissatisfaction due to billing discrepancies",
+        "urgency": "high"
+      },
+      {
+        "issue": "Contract pending approval with no assigned owner",
+        "impact": "Delays in service commencement and potential loss of trust from the customer",
+        "urgency": "high"
+      },
+      {
+        "issue": "Missing billing country information",
+        "impact": "Risk of tax and provisioning failures, leading to compliance issues",
+        "urgency": "medium"
+      },
+      {
+        "issue": "Closed Won opportunity not linked to contract",
+        "impact": "Lack of alignment between sales and onboarding processes, risking service delivery",
+        "urgency": "medium"
+      }
+    ],
+    "recommended_actions": [
+      {
+        "action": "Escalate the overdue invoice to Finance for immediate resolution",
+        "owner": "Finance",
+        "priority": 1
+      },
+      {
+        "action": "Assign an owner to the contract and expedite the approval process",
+        "owner": "Customer Success",
+        "priority": 1
+      },
+      {
+        "action": "Gather missing billing country information from the customer",
+        "owner": "Customer Success",
+        "priority": 2
+      },
+      {
+        "action": "Link the Closed Won opportunity to the contract in the system",
+        "owner": "Sales",
+        "priority": 2
+      }
+    ],
+    "estimated_resolution_time": "2-4 weeks",
+    "can_proceed_with_warnings": false
+  },
+  "violations": {},
+  "warnings": {
+    "account": [
+      "BillingCountry missing; tax/provisioning may fail"
+    ],
+    "opportunity": [
+      "Closed Won opportunity not linked to Contract"
+    ],
+    "contract": [
+      "Contract has no assigned owner",
+      "Contract has no EndDate or ContractTerm",
+      "Contract pending approval"
+    ],
+    "invoice": [
+      "Invoice INV-2023-089 is 762 days overdue ($25,000.00 outstanding) - escalate to Finance",
+      "Less than 50% of invoice paid (0%)"
+    ]
+  },
+  "api_errors": [],
+  "actions_taken": [],
+  "notifications_sent": [
+    {
+      "channel": "slack",
+      "recipient": "#cs-onboarding",
+      "message": "Escalation notification sent for Gamma Startup",
+      "type": "slack"
+    }
+  ],
+  "provisioning": null
+}

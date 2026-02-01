@@ -1,0 +1,103 @@
+{
+  "correlation_id": "e7c0da98-1db8-45cb-a023-61d53e12466d",
+  "account_id": "DELETED-004",
+  "account_name": "Deleted Corp",
+  "decision": "BLOCK",
+  "stage": "complete",
+  "timestamp": "2026-02-01T00:58:11.518221",
+  "risk_analysis": {
+    "summary": "The onboarding status for Deleted Corp is critically compromised due to the account being marked as deleted, with multiple missing elements including user data, opportunity, contract, and invoice.",
+    "risk_level": "critical",
+    "risks": [
+      {
+        "issue": "Account is marked as deleted",
+        "impact": "Prevents any further onboarding processes, leading to potential revenue loss and customer dissatisfaction.",
+        "urgency": "high"
+      },
+      {
+        "issue": "Missing user data",
+        "impact": "Inability to communicate with the customer effectively, hindering support and engagement.",
+        "urgency": "high"
+      },
+      {
+        "issue": "Missing opportunity data",
+        "impact": "Lack of visibility into potential revenue, affecting sales forecasting and strategy.",
+        "urgency": "medium"
+      },
+      {
+        "issue": "Missing contract data",
+        "impact": "Legal and compliance risks arise from the absence of a formal agreement, jeopardizing the business relationship.",
+        "urgency": "high"
+      },
+      {
+        "issue": "No invoice found",
+        "impact": "Inability to bill the customer, leading to cash flow issues and operational inefficiencies.",
+        "urgency": "high"
+      }
+    ],
+    "recommended_actions": [
+      {
+        "action": "Reassess the account status and restore if possible, or create a new account if necessary.",
+        "owner": "Customer Success",
+        "priority": 1
+      },
+      {
+        "action": "Gather and input the missing user data to facilitate communication.",
+        "owner": "Customer Success",
+        "priority": 2
+      },
+      {
+        "action": "Create an opportunity record for the account to track potential revenue.",
+        "owner": "Sales",
+        "priority": 2
+      },
+      {
+        "action": "Draft and finalize a contract for the account to formalize the business relationship.",
+        "owner": "Legal",
+        "priority": 1
+      },
+      {
+        "action": "Generate an invoice for the account to initiate billing processes.",
+        "owner": "Finance",
+        "priority": 1
+      }
+    ],
+    "estimated_resolution_time": "2-4 weeks",
+    "can_proceed_with_warnings": false
+  },
+  "violations": {
+    "account": [
+      "Account is marked as deleted"
+    ],
+    "user": [
+      "User data missing"
+    ],
+    "opportunity": [
+      "Opportunity data missing"
+    ],
+    "contract": [
+      "Contract data missing"
+    ]
+  },
+  "warnings": {
+    "account": [
+      "BillingCountry missing; tax/provisioning may fail",
+      "Industry not set; segmentation limited",
+      "Account has no assigned owner"
+    ],
+    "invoice": [
+      "No invoice found for this account"
+    ]
+  },
+  "api_errors": [],
+  "actions_taken": [],
+  "notifications_sent": [
+    {
+      "channel": "slack",
+      "recipient": "#cs-onboarding-alerts",
+      "message": "Blocked notification sent for Deleted Corp",
+      "type": "slack"
+    }
+  ],
+  "provisioning": null
+}

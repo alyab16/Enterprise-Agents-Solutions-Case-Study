@@ -1,0 +1,136 @@
+{
+  "correlation_id": "e0168a7b-2d0a-467f-814e-c9908496cb3d",
+  "account_id": "SERVER-ERROR",
+  "account_name": "SERVER-ERROR",
+  "decision": "BLOCK",
+  "stage": "complete",
+  "timestamp": "2026-02-01T00:58:41.483987",
+  "risk_analysis": {
+    "summary": "The onboarding process is severely hindered due to missing critical account, opportunity, contract, and invoice data, compounded by multiple API errors affecting service availability.",
+    "risk_level": "critical",
+    "risks": [
+      {
+        "issue": "Missing account, opportunity, contract, and invoice data",
+        "impact": "Inability to proceed with customer engagement and billing, leading to potential revenue loss and customer dissatisfaction.",
+        "urgency": "high"
+      },
+      {
+        "issue": "Multiple API errors causing service disruptions",
+        "impact": "Delays in onboarding and potential long-term issues with system integration and reliability.",
+        "urgency": "high"
+      },
+      {
+        "issue": "Missing invoice details such as total amount and due date",
+        "impact": "Inability to generate accurate billing, which could lead to cash flow issues and hinder customer communication.",
+        "urgency": "medium"
+      }
+    ],
+    "recommended_actions": [
+      {
+        "action": "Coordinate with IT to resolve API errors and restore service functionality.",
+        "owner": "IT Department",
+        "priority": 1
+      },
+      {
+        "action": "Gather and input missing account, opportunity, contract, and invoice data.",
+        "owner": "Customer Success Team",
+        "priority": 1
+      },
+      {
+        "action": "Review and update invoice details to ensure accurate billing information is available.",
+        "owner": "Finance Team",
+        "priority": 2
+      }
+    ],
+    "estimated_resolution_time": "1-2 weeks, depending on the resolution of API issues and data gathering.",
+    "can_proceed_with_warnings": false
+  },
+  "violations": {
+    "api_error": [
+      "SALESFORCE API Error [SERVER_ERROR]: Salesforce service is temporarily unavailable",
+      "CLM API Error [INTERNAL_ERROR]: CLM service is experiencing issues",
+      "NETSUITE API Error [UNEXPECTED_ERROR]: NetSuite server encountered an error"
+    ],
+    "account": [
+      "Account data missing"
+    ],
+    "user": [
+      "User data missing"
+    ],
+    "opportunity": [
+      "Opportunity data missing"
+    ],
+    "contract": [
+      "Contract data missing"
+    ],
+    "invoice": [
+      "Invoice ID is missing",
+      "Invalid invoice status: SERVER_ERROR"
+    ]
+  },
+  "warnings": {
+    "invoice": [
+      "Invoice total amount is missing",
+      "Invoice due date is missing",
+      "Customer email missing on invoice - cannot send reminders"
+    ]
+  },
+  "api_errors": [
+    {
+      "system": "salesforce",
+      "error_type": "server",
+      "error_code": "SERVER_ERROR",
+      "message": "Service temporarily unavailable",
+      "http_status": 500,
+      "timestamp": "2026-02-01T00:58:33.561578",
+      "details": {
+        "account_id": "SERVER-ERROR",
+        "operation": "get_account"
+      },
+      "resolution": "This is typically a temporary issue. Check status.salesforce.com for any ongoing incidents. Retry the operation in a few minutes.",
+      "description": "Salesforce service is temporarily unavailable",
+      "owner": "Support Team"
+    },
+    {
+      "system": "clm",
+      "error_type": "server",
+      "error_code": "INTERNAL_ERROR",
+      "message": "[INTERNAL_ERROR] Service temporarily unavailable (HTTP 500)",
+      "http_status": 500,
+      "timestamp": "2026-02-01T00:58:33.562396",
+      "details": {
+        "account_id": "SERVER-ERROR",
+        "operation": "get_contract"
+      },
+      "resolution": "Check the CLM status page for any incidents. Retry the operation after a few minutes. Contact CLM support if the issue persists.",
+      "description": "CLM service is experiencing issues",
+      "owner": "Support Team"
+    },
+    {
+      "system": "netsuite",
+      "error_type": "server",
+      "error_code": "UNEXPECTED_ERROR",
+      "message": "[UNEXPECTED_ERROR] An unexpected error has occurred. Please try again. (HTTP 500)",
+      "http_status": 500,
+      "timestamp": "2026-02-01T00:58:33.562988",
+      "details": {
+        "account_id": "SERVER-ERROR",
+        "operation": "get_invoice",
+        "error_details": {}
+      },
+      "resolution": "Check system.netsuite.com/status for service health. If the issue persists, contact NetSuite support with the error details.",
+      "description": "NetSuite server encountered an error",
+      "owner": "Support Team"
+    }
+  ],
+  "actions_taken": [],
+  "notifications_sent": [
+    {
+      "channel": "slack",
+      "recipient": "#cs-onboarding-alerts",
+      "message": "Blocked notification sent for SERVER-ERROR",
+      "type": "slack"
+    }
+  ],
+  "provisioning": null
+}
