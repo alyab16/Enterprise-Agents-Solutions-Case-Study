@@ -50,7 +50,32 @@ ALL_SCENARIOS = [
         "description": "Account does not exist in any system.",
         "expected_decision": "BLOCK",
         "category": "normal",
-    }
+    },
+    # ===== ERROR SIMULATION SCENARIOS =====
+    {
+        "id": "AUTH-ERROR",
+        "name": "API Authentication Failure",
+        "description": "Simulates Salesforce session expired or invalid credentials.",
+        "expected_decision": "BLOCK",
+        "category": "error_simulation",
+        "error_type": "authentication",
+    },
+    {
+        "id": "PERM-ERROR",
+        "name": "API Permission Denied",
+        "description": "Simulates user lacking permissions to access Salesforce objects.",
+        "expected_decision": "BLOCK",
+        "category": "error_simulation",
+        "error_type": "authorization",
+    },
+    {
+        "id": "SERVER-ERROR",
+        "name": "API Server Error",
+        "description": "Simulates Salesforce/NetSuite server returning 500 error.",
+        "expected_decision": "BLOCK",
+        "category": "error_simulation",
+        "error_type": "server",
+    },
 ]
 
 
@@ -428,3 +453,191 @@ async def download_report(filename: str):
         media_type = "text/plain"
     
     return FileResponse(filepath, filename=filename, media_type=media_type)
+
+
+# ============================================================================
+# ONBOARDING TASK MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@router.get("/tasks/{account_id}")
+async def get_onboarding_tasks(account_id: str):
+    """
+    Get all onboarding tasks for an account.
+    
+    Returns the full task checklist with status, owners, due dates, and dependencies.
+    
+    This shows the granular steps during SaaS provisioning:
+    - Automated tasks (system-completed)
+    - CS team tasks (schedule kickoff, configure SSO, etc.)
+    - Customer tasks (verify login, complete tour, etc.)
+    """
+    from app.integrations import provisioning
+    
+    if not provisioning.is_provisioned(account_id):
+        return {
+            "error": "Account not provisioned",
+            "account_id": account_id,
+            "message": "Run /demo/run/{account_id} first to provision the account and create tasks"
+        }
+    
+    tasks = provisioning.get_onboarding_tasks(account_id)
+    prov_status = provisioning.get_provisioning_status(account_id)
+    
+    # Group tasks by category
+    by_category = {}
+    for task in tasks:
+        cat = task.get("category", "other")
+        if cat not in by_category:
+            by_category[cat] = []
+        by_category[cat].append(task)
+    
+    # Group tasks by status
+    by_status = {}
+    for task in tasks:
+        status = task.get("status", "unknown")
+        if status not in by_status:
+            by_status[status] = []
+        by_status[status].append(task)
+    
+    return {
+        "account_id": account_id,
+        "tenant_id": prov_status.get("tenant_id"),
+        "tier": prov_status.get("tier"),
+        "task_summary": prov_status.get("onboarding_tasks", {}),
+        "tasks": {
+            "all": tasks,
+            "by_category": by_category,
+            "by_status": by_status,
+        }
+    }
+
+
+@router.get("/tasks/{account_id}/pending")
+async def get_pending_tasks(account_id: str, owner: str = None):
+    """
+    Get pending onboarding tasks, optionally filtered by owner.
+    
+    Owners can be: "cs_team", "customer", "system"
+    """
+    from app.integrations import provisioning
+    
+    if not provisioning.is_provisioned(account_id):
+        return {"error": "Account not provisioned", "account_id": account_id}
+    
+    if owner:
+        tasks = provisioning.get_pending_tasks_by_owner(account_id, owner)
+    else:
+        all_tasks = provisioning.get_onboarding_tasks(account_id)
+        tasks = [t for t in all_tasks if t.get("status") in ["pending", "in_progress"]]
+    
+    return {
+        "account_id": account_id,
+        "filter": {"owner": owner} if owner else None,
+        "pending_count": len(tasks),
+        "tasks": tasks,
+    }
+
+
+@router.get("/tasks/{account_id}/overdue")
+async def get_overdue_tasks(account_id: str):
+    """
+    Get overdue onboarding tasks.
+    
+    These are tasks that have passed their due date but are not yet completed.
+    The agent can use this to proactively alert the CS team.
+    """
+    from app.integrations import provisioning
+    
+    if not provisioning.is_provisioned(account_id):
+        return {"error": "Account not provisioned", "account_id": account_id}
+    
+    overdue = provisioning.get_overdue_tasks(account_id)
+    
+    return {
+        "account_id": account_id,
+        "overdue_count": len(overdue),
+        "alert_level": "critical" if len(overdue) > 3 else "warning" if len(overdue) > 0 else "ok",
+        "tasks": overdue,
+    }
+
+
+@router.put("/tasks/{account_id}/{task_id}")
+async def update_task_status(
+    account_id: str, 
+    task_id: str, 
+    status: str,
+    completed_by: str = None,
+    notes: str = None
+):
+    """
+    Update the status of an onboarding task.
+    
+    Valid statuses: pending, in_progress, completed, blocked, skipped
+    
+    This would be called by:
+    - CS team marking tasks complete
+    - Webhooks from the platform (when customer completes actions)
+    - Automated monitoring jobs
+    """
+    from app.integrations import provisioning
+    
+    valid_statuses = ["pending", "in_progress", "completed", "blocked", "skipped"]
+    if status not in valid_statuses:
+        return {
+            "error": "Invalid status",
+            "valid_statuses": valid_statuses,
+        }
+    
+    if not provisioning.is_provisioned(account_id):
+        return {"error": "Account not provisioned", "account_id": account_id}
+    
+    updated_task = provisioning.update_task_status(
+        account_id, 
+        task_id, 
+        status,
+        completed_by=completed_by,
+        notes=notes
+    )
+    
+    if not updated_task:
+        return {"error": "Task not found", "task_id": task_id}
+    
+    # Get updated summary
+    prov_status = provisioning.get_provisioning_status(account_id)
+    
+    return {
+        "message": f"Task {task_id} updated to {status}",
+        "task": updated_task,
+        "onboarding_progress": prov_status.get("onboarding_tasks", {}),
+    }
+
+
+@router.get("/tasks/{account_id}/next-actions")
+async def get_next_actions(account_id: str):
+    """
+    Get the next actionable tasks for CS team and customer.
+    
+    Returns tasks that:
+    - Have all dependencies completed
+    - Are still pending
+    - Grouped by owner for easy assignment
+    """
+    from app.integrations import provisioning
+    
+    if not provisioning.is_provisioned(account_id):
+        return {"error": "Account not provisioned", "account_id": account_id}
+    
+    prov_status = provisioning.get_provisioning_status(account_id)
+    task_summary = prov_status.get("onboarding_tasks", {})
+    
+    # Get pending tasks by owner
+    cs_tasks = provisioning.get_pending_tasks_by_owner(account_id, "cs_team")
+    customer_tasks = provisioning.get_pending_tasks_by_owner(account_id, "customer")
+    
+    return {
+        "account_id": account_id,
+        "completion_percentage": task_summary.get("completion_percentage", 0),
+        "next_actions": task_summary.get("next_actions", []),
+        "cs_team_tasks": cs_tasks[:3],  # Top 3
+        "customer_tasks": customer_tasks[:3],  # Top 3
+    }

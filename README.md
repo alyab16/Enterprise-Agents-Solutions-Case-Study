@@ -299,6 +299,53 @@ The agent generates professional reports for each run:
 - **Markdown Reports** - Complete run summary with violations, warnings, API errors, and actions
 - **JSON Audit Logs** - Machine-readable audit trail with full state
 
+## 📋 Onboarding Task Management
+
+When an account is provisioned, the agent automatically creates a **granular onboarding task checklist** that tracks the CS workflow:
+
+### Task Categories
+
+| Category | Owner | Examples |
+|----------|-------|----------|
+| **Automated** | System | Create tenant, generate API credentials, send welcome email |
+| **CS Action** | CS Team | Schedule kickoff call, configure SSO, create custom reports |
+| **Customer Action** | Customer | Verify login, complete platform tour, invite team members |
+| **Technical** | CS Team | SSO integration, API setup |
+
+### Task Endpoints
+
+```bash
+# Get all tasks for an account
+GET /demo/tasks/ACME-001
+
+# Get pending tasks (optionally filter by owner)
+GET /demo/tasks/ACME-001/pending?owner=cs_team
+
+# Get overdue tasks (for proactive alerts)
+GET /demo/tasks/ACME-001/overdue
+
+# Get next actionable items
+GET /demo/tasks/ACME-001/next-actions
+
+# Update task status (CS team marks complete)
+PUT /demo/tasks/ACME-001/ACME-001-T005?status=completed&completed_by=john@company.com
+```
+
+### Example Task Flow
+
+```
+1. ✅ Create Tenant (system - auto-completed)
+2. ✅ Generate API Credentials (system - auto-completed)
+3. ✅ Send Welcome Email (system - auto-completed)
+4. ✅ Send Training Materials (system - auto-completed)
+5. ⏳ Schedule Kickoff Call (cs_team - pending, due in 1 day)
+6. ⏳ Verify Login Access (customer - pending, due in 2 days)
+7. ⏳ Conduct Kickoff Call (cs_team - pending, due in 3 days)
+8. ⏳ Complete Platform Tour (customer - pending, due in 5 days)
+...
+14. ⏳ Onboarding Complete (cs_team - pending, due in 45 days)
+```
+
 ## 📁 Project Structure
 
 ```

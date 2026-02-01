@@ -454,7 +454,7 @@ def send_notifications(state: AgentState) -> AgentState:
 
 
 def provision_account(state: AgentState) -> AgentState:
-    """Provision the customer account in the SaaS platform."""
+    """Provision the customer account in the SaaS platform and create onboarding tasks."""
     account_id = state.get("account_id")
     correlation_id = state.get("correlation_id", "")
     
@@ -479,14 +479,29 @@ def provision_account(state: AgentState) -> AgentState:
     clm_data = state.get("clm", {})
     tier = clm_data.get("key_terms", {}).get("sla_tier", "Starter")
     
-    # Provision the account
-    prov_result = provisioning.provision_account(account_id, tier)
+    # Get customer name for task assignment
+    account = state.get("account") or {}
+    customer_name = account.get("Name", account_id)
+    
+    # Provision the account (also creates onboarding tasks)
+    prov_result = provisioning.provision_account(account_id, tier, customer_name)
     state["provisioning"] = prov_result
+    
+    # Log the onboarding tasks created
+    task_summary = prov_result.get("onboarding_tasks", {})
+    log_event(
+        "onboarding.tasks_created",
+        account_id=account_id,
+        total_tasks=task_summary.get("total_tasks", 0),
+        completed=task_summary.get("completed", 0),
+        pending=task_summary.get("pending", 0),
+    )
     
     record_action(state, "provision", {
         "tenant_id": prov_result.get("tenant_id"),
         "tier": tier,
         "status": prov_result.get("status"),
+        "onboarding_tasks": task_summary,
     })
     
     state["stage"] = "provisioned"
@@ -496,11 +511,11 @@ def provision_account(state: AgentState) -> AgentState:
         account_id=account_id,
         tenant_id=prov_result.get("tenant_id"),
         tier=tier,
+        onboarding_progress=f"{task_summary.get('completion_percentage', 0)}%",
     )
     
     # Send success notifications
-    account = state.get("account") or {}
-    account_name = account.get("Name", account_id)
+    account_name = customer_name
     
     notifier.notify_cs_team_success(
         account_name=account_name,
