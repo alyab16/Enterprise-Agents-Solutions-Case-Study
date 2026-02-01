@@ -125,10 +125,34 @@ stateDiagram-v2
 ### Prerequisites
 
 - Python 3.11+
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip
 - OpenAI API key (optional - uses rule-based fallback without it)
 - LangSmith API key (optional - for tracing)
 
 ### Installation
+
+#### Option 1: Using uv (Recommended - Faster)
+
+[uv](https://docs.astral.sh/uv/) is a fast Python package installer and resolver.
+
+```bash
+# Install uv if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Navigate to project
+cd onboarding-agent
+
+# Create virtual environment and install dependencies
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv pip install -r requirements.txt
+
+# Set up environment
+cp .env.example .env
+# Edit .env with your API keys
+```
+
+#### Option 2: Using pip
 
 ```bash
 cd onboarding-agent
@@ -148,7 +172,7 @@ cp .env.example .env
 ### Run the Demo
 
 ```bash
-# Run standalone demo (no dependencies needed)
+# Run standalone demo (no server needed)
 python demo_standalone.py
 
 # Or start the API server
@@ -381,7 +405,6 @@ onboarding-agent/
 
 ## 🔒 Security Features
 
-- OAuth simulation with token expiry
 - Permission checking before API calls
 - Credential validation
 - Audit logging with correlation IDs

@@ -506,6 +506,8 @@ def get_contract(account_id: str) -> Dict[str, Any]:
             "status": "AUTH_ERROR",
             "error": str(e),
             "error_code": e.error_code,
+            "http_status": e.status_code,
+            "system": "CLM",
         }
     
     except CLMAuthorizationError as e:
@@ -515,6 +517,30 @@ def get_contract(account_id: str) -> Dict[str, Any]:
             "status": "PERMISSION_ERROR",
             "error": str(e),
             "error_code": e.error_code,
+            "http_status": e.status_code,
+            "system": "CLM",
+        }
+    
+    except CLMRateLimitError as e:
+        log_event("clm.api.rate_limit_error", error=str(e), account_id=account_id)
+        return {
+            "contract_id": None,
+            "status": "RATE_LIMIT_ERROR",
+            "error": str(e),
+            "error_code": e.error_code,
+            "http_status": e.status_code,
+            "system": "CLM",
+        }
+    
+    except CLMValidationError as e:
+        log_event("clm.api.validation_error", error=str(e), account_id=account_id)
+        return {
+            "contract_id": None,
+            "status": "VALIDATION_ERROR",
+            "error": str(e),
+            "error_code": e.error_code,
+            "http_status": e.status_code,
+            "system": "CLM",
         }
     
     except CLMServerError as e:
@@ -523,6 +549,9 @@ def get_contract(account_id: str) -> Dict[str, Any]:
             "contract_id": None,
             "status": "SERVER_ERROR",
             "error": str(e),
+            "error_code": getattr(e, 'error_code', 'INTERNAL_ERROR'),
+            "http_status": e.status_code,
+            "system": "CLM",
         }
     
     except CLMError as e:
@@ -531,6 +560,9 @@ def get_contract(account_id: str) -> Dict[str, Any]:
             "contract_id": None,
             "status": "API_ERROR",
             "error": str(e),
+            "error_code": getattr(e, 'error_code', 'CLM_ERROR'),
+            "http_status": getattr(e, 'status_code', 500),
+            "system": "CLM",
         }
     
     except APIError as e:
@@ -548,6 +580,8 @@ def get_contract(account_id: str) -> Dict[str, Any]:
             "status": status_map.get(e.category, "API_ERROR"),
             "error": str(e),
             "error_code": e.error_code,
+            "http_status": e.status_code,
+            "system": "CLM",
         }
 
 

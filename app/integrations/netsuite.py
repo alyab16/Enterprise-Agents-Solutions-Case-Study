@@ -832,8 +832,8 @@ def update_invoice(invoice_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
     log_event("netsuite.api.update_invoice", invoice_id=invoice_id, updates=list(updates.keys()))
     
     if invoice_id not in MOCK_INVOICES_DB:
-        raise NetSuiteNotFoundError("invoice", invoice_id)
-
+        raise NetSuiteAPIError(404, "RECORD_NOT_FOUND", f"Invoice {invoice_id} not found")
+    
     # Apply updates
     MOCK_INVOICES_DB[invoice_id].update(updates)
     MOCK_INVOICES_DB[invoice_id]["lastModifiedDate"] = datetime.utcnow().isoformat()

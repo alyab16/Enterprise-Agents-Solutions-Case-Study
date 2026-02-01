@@ -50,7 +50,32 @@ ALL_SCENARIOS = [
         "description": "Account does not exist in any system.",
         "expected_decision": "BLOCK",
         "category": "normal",
-    }
+    },
+    # ===== ERROR SIMULATION SCENARIOS =====
+    {
+        "id": "AUTH-ERROR",
+        "name": "API Authentication Failure",
+        "description": "Simulates Salesforce session expired or invalid credentials.",
+        "expected_decision": "BLOCK",
+        "category": "error_simulation",
+        "error_type": "authentication",
+    },
+    {
+        "id": "PERM-ERROR",
+        "name": "API Permission Denied",
+        "description": "Simulates user lacking permissions to access Salesforce objects.",
+        "expected_decision": "BLOCK",
+        "category": "error_simulation",
+        "error_type": "authorization",
+    },
+    {
+        "id": "SERVER-ERROR",
+        "name": "API Server Error",
+        "description": "Simulates Salesforce/NetSuite server returning 500 error.",
+        "expected_decision": "BLOCK",
+        "category": "error_simulation",
+        "error_type": "server",
+    },
 ]
 
 

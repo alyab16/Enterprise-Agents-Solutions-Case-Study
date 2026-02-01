@@ -759,7 +759,7 @@ Every run produces:
 5. **State Snapshot**: Complete state at each decision point
 6. **Task History**: Full audit trail of task status changes
 
-<!-- ---
+---
 
 ## 9. Production Roadmap
 
@@ -794,7 +794,7 @@ timeline
                 : Specialized agents
                 : Task Monitor agent
                 : Cross-agent learning
-``` -->
+```
 
 ---
 

@@ -150,17 +150,22 @@ def fetch_clm_data(state: AgentState) -> AgentState:
     clm_data = clm.get_contract(account_id)
 
     # 🚨 Handle CLM API errors (DO NOT SWALLOW)
+    # Check for ALL error status types from CLM module
     if isinstance(clm_data, dict) and clm_data.get("status") in {
         "AUTH_ERROR",
         "PERMISSION_ERROR",
         "SERVER_ERROR",
         "API_ERROR",
+        "VALIDATION_ERROR",
+        "RATE_LIMIT_ERROR",
     }:
         error_type_map = {
             "AUTH_ERROR": ("authentication", "UNAUTHORIZED", 401),
             "PERMISSION_ERROR": ("authorization", "FORBIDDEN", 403),
             "SERVER_ERROR": ("server", "INTERNAL_ERROR", 500),
             "API_ERROR": ("server", "API_ERROR", 500),
+            "VALIDATION_ERROR": ("validation", "VALIDATION_ERROR", 400),
+            "RATE_LIMIT_ERROR": ("rate_limit", "RATE_LIMIT_EXCEEDED", 429),
         }
 
         error_type, error_code, http_status = error_type_map.get(
@@ -170,9 +175,9 @@ def fetch_clm_data(state: AgentState) -> AgentState:
 
         add_api_error(
             state,
-            system="clm",
+            system="CLM",
             error_type=error_type,
-            error_code=error_code,
+            error_code=clm_data.get("error_code", error_code),
             message=clm_data.get("error", "CLM API error"),
             http_status=http_status,
             details={
@@ -181,15 +186,19 @@ def fetch_clm_data(state: AgentState) -> AgentState:
                 "clm_status": clm_data.get("status"),
             },
         )
+        
+        # Set clm to None so downstream knows there's no data
+        state["clm"] = None
         return state
 
-    # Legitimate no-contract case (business logic)
-    if clm_data is None:
+    # Legitimate not-found case (NOT_FOUND status from CLM is not an API error, it's business logic)
+    if clm_data is None or clm_data.get("status") == "NOT_FOUND":
         add_violation(
             state,
             "clm",
             f"No CLM contract found for account {account_id}"
         )
+        state["clm"] = None
         return state
 
     # Success path
