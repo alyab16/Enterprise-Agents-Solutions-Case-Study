@@ -50,33 +50,17 @@ ALL_SCENARIOS = [
         "description": "Account does not exist in any system.",
         "expected_decision": "BLOCK",
         "category": "normal",
-    },
-    # ===== ERROR SIMULATION SCENARIOS =====
-    {
-        "id": "AUTH-ERROR",
-        "name": "API Authentication Failure",
-        "description": "Simulates Salesforce session expired or invalid credentials.",
-        "expected_decision": "BLOCK",
-        "category": "error_simulation",
-        "error_type": "authentication",
-    },
-    {
-        "id": "PERM-ERROR",
-        "name": "API Permission Denied",
-        "description": "Simulates user lacking permissions to access Salesforce objects.",
-        "expected_decision": "BLOCK",
-        "category": "error_simulation",
-        "error_type": "authorization",
-    },
-    {
-        "id": "SERVER-ERROR",
-        "name": "API Server Error",
-        "description": "Simulates Salesforce/NetSuite server returning 500 error.",
-        "expected_decision": "BLOCK",
-        "category": "error_simulation",
-        "error_type": "server",
-    },
+    }
 ]
+
+
+# Error simulation scenario IDs - these are not real accounts
+ERROR_SIMULATION_IDS = {"AUTH-ERROR", "PERM-ERROR", "SERVER-ERROR", "RATE-ERROR", "VALIDATION-ERROR"}
+
+
+def is_error_simulation_scenario(account_id: str) -> bool:
+    """Check if an account_id is an error simulation scenario (not a real account)."""
+    return account_id in ERROR_SIMULATION_IDS or account_id.endswith("-ERROR")
 
 
 @router.get("/scenarios")
@@ -93,6 +77,7 @@ async def run_demo_scenario(account_id: str, generate_report: bool = False):
     Args:
         account_id: The scenario ID to run (e.g., ACME-001, AUTH-ERROR)
         generate_report: If true, also generates HTML/Markdown/JSON reports
+                        (Note: Reports are NOT generated for error simulation scenarios)
     
     Returns the full agent execution result.
     """
@@ -121,12 +106,16 @@ async def run_demo_scenario(account_id: str, generate_report: bool = False):
         "summary": result.get("human_summary"),
     }
     
-    # Optionally generate reports
+    # Optionally generate reports (but NOT for error simulation scenarios)
     if generate_report:
-        generated_files = generate_full_run_report(result)
-        response["generated_reports"] = {
-            k: os.path.basename(v) for k, v in generated_files.items()
-        }
+        if is_error_simulation_scenario(account_id):
+            response["generated_reports"] = None
+            response["report_skipped_reason"] = "Reports are not generated for error simulation scenarios"
+        else:
+            generated_files = generate_full_run_report(result)
+            response["generated_reports"] = {
+                k: os.path.basename(v) for k, v in generated_files.items()
+            }
     
     return response
 
@@ -138,6 +127,7 @@ async def run_all_scenarios(generate_reports: bool = False):
     
     Args:
         generate_reports: If true, generates HTML/Markdown/JSON reports for each scenario
+                         (Note: Reports are NOT generated for error simulation scenarios)
     
     Returns summary of all scenario executions.
     """
@@ -177,8 +167,8 @@ async def run_all_scenarios(generate_reports: bool = False):
         
         results.append(scenario_result)
         
-        # Generate reports if requested
-        if generate_reports:
+        # Generate reports if requested (but NOT for error simulation scenarios)
+        if generate_reports and scenario["category"] != "error_simulation":
             files = generate_full_run_report(result)
             generated_reports.append({
                 "account_id": account_id,
@@ -201,6 +191,7 @@ async def run_all_scenarios(generate_reports: bool = False):
     
     if generate_reports:
         response["generated_reports"] = generated_reports
+        response["reports_note"] = "Reports are only generated for real account scenarios, not error simulations"
     
     return response
 
