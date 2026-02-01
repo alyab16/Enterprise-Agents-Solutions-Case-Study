@@ -427,11 +427,9 @@ class ErrorSimulator:
 
         if chosen == "rate_limit":
             if api_type == "salesforce":
-                raise APIError(
-                    status_code=429,
-                    error_code="RATE_LIMIT",
-                    message="Rate limit exceeded",
-                    category=ErrorCategory.RATE_LIMIT
+                raise SalesforceRateLimitError(
+                    limit=100000,
+                    reset_time=3600
                 )
             elif api_type == "netsuite":
                 raise NetSuiteRateLimitError(limit=10)

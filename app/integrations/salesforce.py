@@ -30,6 +30,7 @@ from app.integrations.api_errors import (
     SalesforceRateLimitError,
     SalesforceServerError,
     APICredentials,
+    APIError,
     SALESFORCE_CREDENTIALS,
     validate_salesforce_credentials,
     check_salesforce_permission,
@@ -604,6 +605,22 @@ def get_account(account_id: str) -> Optional[Dict[str, Any]]:
             record_id=account_id,
         )
 
+    except APIError as e:
+        # Catch simulated errors from ERROR_SIMULATOR that aren't SalesforceError subclasses
+        log_event("salesforce.account.simulated_error", account_id=account_id, error=str(e))
+        return {
+            "status": "API_ERROR",
+            "system": "salesforce",
+            "error_type": str(e.category.value) if e.category else "unknown",
+            "error_code": e.error_code,
+            "message": str(e),
+            "http_status": e.status_code,
+            "details": {
+                "operation": "get_account",
+                "record_id": account_id,
+            },
+        }
+
 def get_user(user_id: str) -> Optional[Dict[str, Any]]:
     """Fetch user data from Salesforce."""
     client = get_client()
@@ -621,6 +638,22 @@ def get_user(user_id: str) -> Optional[Dict[str, Any]]:
             operation="get_user",
             record_id=user_id,
         )
+
+    except APIError as e:
+        # Catch simulated errors from ERROR_SIMULATOR
+        log_event("salesforce.user.simulated_error", user_id=user_id, error=str(e))
+        return {
+            "status": "API_ERROR",
+            "system": "salesforce",
+            "error_type": str(e.category.value) if e.category else "unknown",
+            "error_code": e.error_code,
+            "message": str(e),
+            "http_status": e.status_code,
+            "details": {
+                "operation": "get_user",
+                "record_id": user_id,
+            },
+        }
 
 
 def get_opportunity(opportunity_id: str) -> Optional[Dict[str, Any]]:

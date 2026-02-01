@@ -6,10 +6,11 @@ An AI-powered customer onboarding automation agent built with LangGraph, demonst
 
 This agent automates the customer journey from **Sales → Contract → Invoice → Provisioning**, featuring:
 
-- **Autonomous Decision Making**: PROCEED / ESCALATE / BLOCK based on business rules
+- **Autonomous Decision Making**: PROCEED / ESCALATE / BLOCK based on business rules and API errors
 - **LLM-Powered Risk Analysis**: Intelligent risk assessment with actionable recommendations
 - **Multi-System Integration**: Salesforce, CLM, NetSuite, and SaaS provisioning (mocked)
-- **Realistic Error Simulation**: Auth failures, permission errors, validation errors, server errors
+- **Configurable Error Simulation**: Auth failures, permission errors, validation errors, rate limits, server errors with adjustable probabilities
+- **Comprehensive Error Handling**: API errors are properly caught, recorded, and influence decisions
 - **Proactive Notifications**: Slack and email alerts to stakeholders
 - **Report Generation**: HTML emails, Markdown reports, JSON audit logs
 - **Full Observability**: LangSmith tracing, structured JSON logging, audit trails
@@ -66,7 +67,7 @@ flowchart TB
     API --> INIT
     CRON --> INIT
     
-    DECIDE -->|violations > 0| BLOCK
+    DECIDE -->|violations > 0 OR api_errors > 0| BLOCK
     DECIDE -->|warnings > 0| ESCALATE
     DECIDE -->|all clear| PROCEED
     
@@ -84,6 +85,15 @@ flowchart TB
     NOTIFY <--> EMAIL
 ```
 
+### Decision Logic
+
+The agent makes decisions based on three factors:
+
+1. **API Errors** (`api_errors`): System integration failures (auth, rate limits, server errors) → **BLOCK**
+2. **Violations** (`violations`): Business rule failures (missing data, invalid states) → **BLOCK**  
+3. **Warnings** (`warnings`): Non-critical issues (missing optional fields, pending payments) → **ESCALATE**
+4. **All Clear**: No errors, violations, or warnings → **PROCEED**
+
 ### State Machine
 
 ```mermaid
@@ -91,14 +101,14 @@ stateDiagram-v2
     [*] --> Initializing: Webhook Received
     
     Initializing --> FetchingSalesforce: Create Correlation ID
-    FetchingSalesforce --> FetchingCLM: Account Data
-    FetchingCLM --> FetchingNetSuite: Contract Data
-    FetchingNetSuite --> Validating: Invoice Data
+    FetchingSalesforce --> FetchingCLM: Account Data (or API Error)
+    FetchingCLM --> FetchingNetSuite: Contract Data (or API Error)
+    FetchingNetSuite --> Validating: Invoice Data (or API Error)
     
     Validating --> AnalyzingRisks: Run Invariants
-    AnalyzingRisks --> MakingDecision: LLM Analysis
+    AnalyzingRisks --> MakingDecision: LLM/Rule-Based Analysis
     
-    MakingDecision --> Blocking: Violations Found
+    MakingDecision --> Blocking: API Errors OR Violations Found
     MakingDecision --> Escalating: Warnings Only
     MakingDecision --> Provisioning: All Clear
     
@@ -108,54 +118,6 @@ stateDiagram-v2
     
     SendingNotifications --> GeneratingSummary
     GeneratingSummary --> [*]: Complete
-```
-
-### Data Flow
-
-```mermaid
-sequenceDiagram
-    participant W as Webhook
-    participant A as Agent
-    participant SF as Salesforce
-    participant CLM as CLM
-    participant NS as NetSuite
-    participant LLM as OpenAI
-    participant P as Provisioning
-    participant N as Notifications
-
-    W->>A: POST /webhook/onboarding
-    
-    rect rgb(240, 248, 255)
-        Note over A,NS: Data Fetching Phase
-        A->>SF: GET Account, Opportunity, Contract
-        SF-->>A: Account Data
-        A->>CLM: GET Contract Status
-        CLM-->>A: Contract Data
-        A->>NS: GET Invoice
-        NS-->>A: Invoice Data
-    end
-    
-    rect rgb(255, 248, 240)
-        Note over A,LLM: Analysis Phase
-        A->>A: Run Invariant Checks
-        A->>LLM: Analyze Risks
-        LLM-->>A: Risk Assessment
-        A->>A: Make Decision
-    end
-    
-    alt Decision = PROCEED
-        rect rgb(240, 255, 240)
-            A->>P: Create Tenant
-            P-->>A: Tenant ID
-            A->>N: Success Notification
-        end
-    else Decision = BLOCK/ESCALATE
-        rect rgb(255, 240, 240)
-            A->>N: Alert Notification
-        end
-    end
-    
-    A-->>W: OnboardingResponse
 ```
 
 ## 🚀 Quick Start
@@ -206,13 +168,30 @@ uvicorn main:app --reload
 | GAMMA-003 | Overdue Invoice | ⚠️ ESCALATE |
 | DELETED-004 | Deleted Account | 🚫 BLOCK |
 
-### Error Simulation Scenarios
+### Error Simulation
 
-| Account ID | Simulated Error | Description |
-|------------|-----------------|-------------|
-| AUTH-ERROR | 401 Unauthorized | Invalid API credentials |
-| PERM-ERROR | 403 Forbidden | Missing permissions |
-| SERVER-ERROR | 500 Server Error | API server failure |
+Enable configurable error injection to test resilience:
+
+```bash
+# Enable 100% auth error rate
+POST /demo/enable-random-errors?auth_rate=1.0
+
+# Enable mixed error rates
+POST /demo/enable-random-errors?auth_rate=0.1&rate_limit_rate=0.2&server_error_rate=0.05
+
+# Check current simulator status
+GET /demo/error-simulator-status
+
+# Disable error simulation
+POST /demo/disable-random-errors
+```
+
+| Error Type | Description | HTTP Code |
+|------------|-------------|-----------|
+| `auth_rate` | Authentication failures | 401 |
+| `validation_rate` | Validation errors | 400 |
+| `rate_limit_rate` | Rate limit exceeded | 429 |
+| `server_error_rate` | Server errors | 500 |
 
 ## 🔌 API Endpoints
 
@@ -230,9 +209,16 @@ uvicorn main:app --reload
 |--------|----------|-------------|
 | GET | `/demo/scenarios` | List all scenarios |
 | POST | `/demo/run/{account_id}` | Run specific scenario |
-| POST | `/demo/run-all` | Run all normal scenarios |
-| POST | `/demo/run-error-scenarios` | Run error scenarios |
-| POST | `/demo/run-with-report/{account_id}` | Run and generate reports |
+| POST | `/demo/run-all` | Run all scenarios |
+| POST | `/demo/run-with-reports` | Run all with report generation |
+
+### Error Simulation Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/demo/enable-random-errors` | Enable error injection with configurable rates |
+| POST | `/demo/disable-random-errors` | Disable error injection |
+| GET | `/demo/error-simulator-status` | Check current simulator configuration |
 
 ### Report Endpoints
 
@@ -242,46 +228,76 @@ uvicorn main:app --reload
 | GET | `/demo/reports/{filename}` | View report (renders HTML) |
 | GET | `/demo/reports/{filename}/download` | Download report |
 
-## 📧 Generated Reports
+## 🔧 Error Handling Architecture
+
+```mermaid
+flowchart TD
+    subgraph Integration["Integration Layer"]
+        SF_CALL[Salesforce API Call]
+        CLM_CALL[CLM API Call]
+        NS_CALL[NetSuite API Call]
+    end
+    
+    subgraph ErrorSim["Error Simulator"]
+        SIM[ERROR_SIMULATOR.maybe_raise_error]
+        AUTH[Auth Error]
+        RATE[Rate Limit]
+        VAL[Validation Error]
+        SRV[Server Error]
+    end
+    
+    subgraph Catching["Error Handling"]
+        CATCH_SPECIFIC[Catch Specific Errors]
+        CATCH_API[Catch Generic APIError]
+        PAYLOAD[Create Error Payload]
+    end
+    
+    subgraph State["Agent State"]
+        API_ERRORS[api_errors list]
+        VIOLATIONS[violations dict]
+        DECISION[make_decision]
+    end
+    
+    SF_CALL --> SIM
+    CLM_CALL --> SIM
+    NS_CALL --> SIM
+    
+    SIM -->|random| AUTH
+    SIM -->|random| RATE
+    SIM -->|random| VAL
+    SIM -->|random| SRV
+    
+    AUTH --> CATCH_SPECIFIC
+    RATE --> CATCH_SPECIFIC
+    VAL --> CATCH_SPECIFIC
+    SRV --> CATCH_SPECIFIC
+    CATCH_SPECIFIC --> CATCH_API
+    CATCH_API --> PAYLOAD
+    
+    PAYLOAD --> API_ERRORS
+    API_ERRORS --> DECISION
+    VIOLATIONS --> DECISION
+    
+    DECISION -->|api_errors > 0| BLOCK[🚫 BLOCK]
+```
+
+### Key Error Handling Features
+
+1. **In-Place Error Simulator Modification**: The `ERROR_SIMULATOR` object is modified in-place when enabled, ensuring all modules reference the same instance.
+
+2. **Comprehensive Error Catching**: Each integration module catches both specific error types AND generic `APIError` as a fallback.
+
+3. **Error-Aware Decision Making**: The `make_decision` function checks `api_errors` first, ensuring system failures block onboarding.
+
+4. **Error Details in Reports**: API errors are added to violations and appear in generated reports with full context.
+
+## 📊 Generated Reports
 
 The agent generates professional reports for each run:
 
 - **HTML Email Templates** - Blocked notifications, success notifications, welcome emails
-- **Markdown Reports** - Complete run summary with violations, warnings, actions
-- **JSON Audit Logs** - Machine-readable audit trail
-
-## 🔧 Error Handling
-
-```mermaid
-flowchart LR
-    subgraph Salesforce
-        SF401[401 INVALID_SESSION_ID]
-        SF403[403 INSUFFICIENT_ACCESS]
-        SF400[400 VALIDATION_ERROR]
-        SF429[429 RATE_LIMIT]
-    end
-    
-    subgraph NetSuite
-        NS401[401 INVALID_LOGIN]
-        NS403[403 INSUFFICIENT_PERMISSION]
-        NS400[400 INVALID_FIELD_VALUE]
-        NS429[429 CONCURRENCY_LIMIT]
-    end
-    
-    subgraph CLM
-        CLM401[401 UNAUTHORIZED]
-        CLM403[403 FORBIDDEN]
-        CLM409[409 CONTRACT_LOCKED]
-        CLM500[500 INTERNAL_ERROR]
-    end
-    
-    SF401 --> WARN[Add Warning]
-    SF403 --> VIOL[Add Violation]
-    NS401 --> WARN
-    NS403 --> VIOL
-    CLM401 --> WARN
-    CLM403 --> VIOL
-```
+- **Markdown Reports** - Complete run summary with violations, warnings, API errors, and actions
+- **JSON Audit Logs** - Machine-readable audit trail with full state
 
 ## 📁 Project Structure
 
@@ -297,15 +313,20 @@ onboarding-agent/
     │   ├── graph.py            # Workflow definition
     │   ├── nodes.py            # Processing steps
     │   ├── router.py           # Decision routing
+    │   ├── state.py            # State definition
+    │   ├── state_utils.py      # State manipulation utilities
     │   └── invariants/         # Business rules
     ├── api/                    # REST endpoints
+    │   ├── demo.py             # Demo endpoints with error simulation
+    │   └── webhook.py          # Webhook handlers
     ├── integrations/           # Mock API clients
     │   ├── salesforce.py       # Salesforce CRM
     │   ├── clm.py              # Contract Lifecycle
     │   ├── netsuite.py         # NetSuite ERP
     │   ├── provisioning.py     # SaaS provisioning
-    │   └── api_errors.py       # Shared error types
+    │   └── api_errors.py       # Shared error types & simulator
     ├── llm/                    # LLM integration
+    │   └── risk_analyzer.py    # Risk analysis with fallback
     ├── notifications/          # Slack/Email
     ├── reports/                # Report generation
     └── logging/                # Structured logging

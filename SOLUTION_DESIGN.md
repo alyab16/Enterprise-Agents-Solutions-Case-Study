@@ -1,7 +1,7 @@
 # Enterprise Customer Onboarding Agent - Solution Design
 
-**Version:** 1.0  
-**Date:** January 2025  
+**Version:** 1.1  
+**Date:** February 2025  
 **Author:** Case Study Submission for StackAdapt Enterprise Agent Solutions Developer Role
 
 ---
@@ -25,6 +25,7 @@ This document describes an **AI-powered Customer Success Onboarding Agent** that
 
 - **Integrates** with Salesforce (CRM), CLM (Contract Lifecycle), NetSuite (ERP/Invoicing), and SaaS Provisioning systems
 - **Validates** business rules using a tiered invariant system (blocking violations vs. non-blocking warnings)
+- **Handles API errors** comprehensively, treating system failures as blocking conditions
 - **Analyzes risks** using LLM-powered intelligence to generate human-readable insights
 - **Takes autonomous actions** (provisioning, notifications) with appropriate guardrails
 - **Escalates** to humans when confidence thresholds aren't met
@@ -33,12 +34,13 @@ This document describes an **AI-powered Customer Success Onboarding Agent** that
 
 | Capability | Implementation |
 |-----------|----------------|
-| Multi-system integration | REST API mocks for Salesforce, NetSuite, CLM |
-| Intelligent decision-making | LangGraph state machine with conditional routing |
-| LLM-powered analysis | OpenAI GPT-4 for risk assessment and summaries |
+| Multi-system integration | REST API mocks for Salesforce, NetSuite, CLM with comprehensive error handling |
+| Intelligent decision-making | LangGraph state machine with conditional routing based on violations, warnings, AND API errors |
+| LLM-powered analysis | OpenAI GPT-4 for risk assessment and summaries with rule-based fallback |
+| Configurable error simulation | Adjustable rates for auth, validation, rate limit, and server errors |
 | Proactive notifications | Slack and email alerts to stakeholders |
 | Full observability | LangSmith tracing, structured JSON logging, audit trails |
-| Error resilience | Comprehensive error handling for all API failures |
+| Error resilience | All API errors caught, recorded, and factored into decisions |
 
 ---
 
@@ -77,7 +79,7 @@ flowchart TB
         VALIDATE --> ANALYZE
         ANALYZE --> DECIDE
         
-        DECIDE -->|violations > 0| BLOCK
+        DECIDE -->|api_errors > 0 OR violations > 0| BLOCK
         DECIDE -->|warnings > 0| ESCALATE
         DECIDE -->|all clear| PROCEED
         
@@ -132,19 +134,19 @@ sequenceDiagram
     rect rgb(230, 245, 255)
         Note over Agent,NS: 📥 Data Collection Phase
         Agent->>SF: GET Account, User, Opportunity
-        SF-->>Agent: Account data
+        SF-->>Agent: Account data OR API Error
         Agent->>CLM: GET Contract status
-        CLM-->>Agent: Contract data
+        CLM-->>Agent: Contract data OR API Error
         Agent->>NS: GET Invoice
-        NS-->>Agent: Invoice data
+        NS-->>Agent: Invoice data OR API Error
     end
     
     rect rgb(255, 245, 230)
         Note over Agent,LLM: 🔍 Analysis Phase
         Agent->>Agent: Run invariant checks
-        Agent->>LLM: Analyze risks & generate summary
+        Agent->>LLM: Analyze risks (including API errors)
         LLM-->>Agent: Risk assessment + recommendations
-        Agent->>Agent: Make decision (BLOCK/ESCALATE/PROCEED)
+        Agent->>Agent: Make decision (check api_errors first)
     end
     
     alt Decision = PROCEED
@@ -175,7 +177,7 @@ sequenceDiagram
 | Agent Framework | LangGraph | State machine orchestration |
 | LLM | OpenAI GPT-4o-mini | Risk analysis, summaries |
 | Observability | LangSmith | Tracing, debugging, monitoring |
-| Integrations | REST APIs | Salesforce, NetSuite, CLM |
+| Integrations | REST APIs | Salesforce, NetSuite, CLM with error simulation |
 | Logging | Structured JSON | Audit trail |
 | Reports | HTML/Markdown | Email templates, documentation |
 
@@ -191,14 +193,17 @@ mindmap
     Risk Analysis
       Assess business impact
       Identify blockers
+      Analyze API errors
       Prioritize issues
     Summary Generation
       Human-readable status
       Executive overview
+      API error context
       Technical details
     Action Recommendations
       Prioritized actions
       Owner assignment
+      Error recovery steps
       Timeline suggestions
     Customer Communications
       Welcome emails
@@ -208,10 +213,17 @@ mindmap
 
 ### 3.2 Risk Analysis Flow
 
+The risk analysis considers three types of issues:
+
+1. **API Errors**: System integration failures (authentication, rate limits, server errors)
+2. **Violations**: Business rule failures that block onboarding
+3. **Warnings**: Non-critical issues that allow proceeding with caution
+
 ```mermaid
 flowchart LR
     subgraph Input
         STATE[Agent State]
+        API_ERR[API Errors]
         VIOL[Violations]
         WARN[Warnings]
         DATA[Account Data]
@@ -229,6 +241,7 @@ flowchart LR
     end
     
     STATE --> PROMPT
+    API_ERR --> PROMPT
     VIOL --> PROMPT
     WARN --> PROMPT
     DATA --> PROMPT
@@ -240,25 +253,35 @@ flowchart LR
     ANALYSIS --> ACTIONS
 ```
 
-### 3.3 Prompt Engineering
+### 3.3 Decision Logic
 
 ```python
-RISK_ANALYSIS_SYSTEM_PROMPT = """
-You are an AI assistant helping Customer Success teams understand onboarding issues.
-
-Analyze the current state and provide:
-1. A clear, human-readable summary
-2. Risk level assessment (low/medium/high/critical)
-3. Specific, actionable recommendations with owners
-
-Format response as JSON:
-{
-    "summary": "Brief overview",
-    "risk_level": "low|medium|high|critical",
-    "risks": [{"issue": "...", "impact": "...", "urgency": "..."}],
-    "recommended_actions": [{"action": "...", "owner": "...", "priority": 1}]
-}
-"""
+def make_decision(state: AgentState) -> AgentState:
+    """Determine routing based on violations, warnings, AND api_errors."""
+    api_errors = state.get("api_errors", [])
+    violations = state.get("violations", {})
+    warnings = state.get("warnings", {})
+    
+    api_error_count = len(api_errors)
+    violation_count = sum(len(msgs) for msgs in violations.values())
+    warning_count = sum(len(msgs) for msgs in warnings.values())
+    
+    # API errors are blocking - they indicate system failures
+    if api_error_count > 0:
+        state["decision"] = "BLOCK"
+        # Add API errors to violations for reporting
+        for error in api_errors:
+            violations.setdefault(error["system"], []).append(
+                f"API Error ({error['error_type']}): {error['message']}"
+            )
+    elif violation_count > 0:
+        state["decision"] = "BLOCK"
+    elif warning_count > 0:
+        state["decision"] = "ESCALATE"
+    else:
+        state["decision"] = "PROCEED"
+    
+    return state
 ```
 
 ### 3.4 Fallback Strategy
@@ -281,143 +304,103 @@ flowchart TD
     RULE_BASED --> RETURN
 ```
 
-When LLM is unavailable, the system uses deterministic rule-based analysis:
+The rule-based fallback also considers API errors:
 
 ```python
 def _rule_based_analyze(state: dict) -> dict:
+    api_errors = state.get("api_errors", [])
     violations = state.get("violations", {})
-    warnings = state.get("warnings", {})
     
-    # Determine risk level based on counts
-    if violation_count > 2:
+    # API errors are always critical
+    if len(api_errors) > 0:
         risk_level = "critical"
-    elif violation_count > 0:
-        risk_level = "high"
-    elif warning_count > 2:
-        risk_level = "medium"
-    else:
-        risk_level = "low"
+        for error in api_errors:
+            risks.append({
+                "issue": f"{error['system']} API Error",
+                "impact": "Cannot fetch required data - onboarding blocked",
+                "urgency": "critical"
+            })
+    # ... rest of analysis
 ```
 
 ---
 
 ## 4. Orchestration & Event-Driven Flows
 
-### 4.1 LangGraph State Machine
+### 4.1 Trigger Types
+
+| Trigger | Source | Use Case |
+|---------|--------|----------|
+| Webhook | Salesforce | Opportunity stage change to "Closed Won" |
+| API | Manual | On-demand onboarding for specific account |
+| Scheduled | Cron | Batch processing of pending onboardings |
+
+### 4.2 Event Flow
 
 ```mermaid
-stateDiagram-v2
-    [*] --> init: Webhook Trigger
+sequenceDiagram
+    participant SF as Salesforce
+    participant WH as Webhook Handler
+    participant Q as Message Queue
+    participant Agent as Onboarding Agent
+    participant DB as State Store
     
-    init --> fetch_salesforce: Create Correlation ID
-    
-    state "Data Fetching" as fetching {
-        fetch_salesforce --> fetch_clm
-        fetch_clm --> fetch_invoice
-    }
-    
-    fetch_invoice --> validate: All Data Collected
-    validate --> analyze_risks: Run Invariants
-    analyze_risks --> make_decision: LLM Analysis
-    
-    state decision_fork <<choice>>
-    make_decision --> decision_fork
-    
-    decision_fork --> send_notifications: BLOCK
-    decision_fork --> send_notifications: ESCALATE
-    decision_fork --> provision_account: PROCEED
-    
-    provision_account --> send_notifications
-    send_notifications --> generate_summary
-    
-    generate_summary --> [*]: Complete
+    SF->>WH: Opportunity Closed Won
+    WH->>WH: Validate payload
+    WH->>Q: Enqueue onboarding job
+    Q->>Agent: Process job
+    Agent->>DB: Load/Create state
+    Agent->>Agent: Execute workflow
+    Agent->>DB: Save final state
+    Agent-->>Q: Job complete
 ```
 
-### 4.2 Event Types
+### 4.3 Error Simulation Architecture
 
-```mermaid
-flowchart LR
-    subgraph Sources["Event Sources"]
-        SF[Salesforce]
-        CLM[CLM System]
-        NS[NetSuite]
-        USER[User/API]
-        SCHEDULER[Scheduler]
-    end
-    
-    subgraph Events["Event Types"]
-        OPP_WON[opportunity.closed_won]
-        CONTRACT_EXEC[contract.executed]
-        INV_PAID[invoice.paid]
-        MANUAL[manual.trigger]
-        SCHEDULED[scheduled.check]
-    end
-    
-    subgraph Agent["Onboarding Agent"]
-        PROCESS[Process Event]
-    end
-    
-    SF --> OPP_WON
-    CLM --> CONTRACT_EXEC
-    NS --> INV_PAID
-    USER --> MANUAL
-    SCHEDULER --> SCHEDULED
-    
-    OPP_WON --> PROCESS
-    CONTRACT_EXEC --> PROCESS
-    INV_PAID --> PROCESS
-    MANUAL --> PROCESS
-    SCHEDULED --> PROCESS
-```
-
-### 4.3 Webhook Integration
+The error simulator allows testing resilience:
 
 ```python
-@router.post("/webhook/onboarding")
-async def onboarding_webhook(event: TriggerEvent):
-    """
-    Triggered by:
-    - Salesforce Process Builder / Flow
-    - Manual API call
-    - Scheduled job
-    """
-    final_state = run_onboarding(
-        account_id=event.account_id,
-        correlation_id=event.correlation_id,
-        event_type=event.event_type,
-    )
-    return OnboardingResponse(...)
+class ErrorSimulator:
+    def __init__(self):
+        self.auth_error_rate = 0.0
+        self.validation_error_rate = 0.0
+        self.rate_limit_error_rate = 0.0
+        self.server_error_rate = 0.0
+        self.enabled = False
+
+    def maybe_raise_error(self, api_type: str) -> None:
+        if not self.enabled:
+            return
+        
+        roll = random.random()
+        # Cumulative probability check
+        if roll < self.auth_error_rate:
+            raise AuthenticationError(api_type)
+        # ... other error types
+
+# Global instance - modified in-place for consistent references
+ERROR_SIMULATOR = ErrorSimulator()
+
+def enable_error_simulation(auth_rate=0.05, ...):
+    # Modify in-place, don't replace
+    ERROR_SIMULATOR.auth_error_rate = auth_rate
+    ERROR_SIMULATOR.enabled = True
 ```
 
 ---
 
 ## 5. Trade-offs, Assumptions & Considerations
 
-### 5.1 Design Trade-offs
-
-```mermaid
-quadrantChart
-    title Design Decision Trade-offs
-    x-axis Low Complexity --> High Complexity
-    y-axis Low Value --> High Value
-    quadrant-1 Implement Now
-    quadrant-2 Consider Carefully
-    quadrant-3 Avoid
-    quadrant-4 Quick Wins
-    
-    LangGraph: [0.7, 0.9]
-    Mock APIs: [0.2, 0.6]
-    LLM Fallback: [0.4, 0.8]
-    Sync Processing: [0.3, 0.5]
-    Message Queues: [0.8, 0.7]
-```
+### 5.1 Design Decisions
 
 | Decision | Trade-off | Rationale |
 |----------|-----------|-----------|
-| **LangGraph vs. Simple Loop** | More complexity, better observability | State machine provides clear audit trail and conditional branching |
-| **Sync vs. Async Processing** | Simpler implementation, longer response times | For demo; production would use message queues |
-| **Rule-based Fallback** | Less intelligent, always available | Ensures system works without LLM connectivity |
-| **Mock APIs vs. Real** | Not production-ready, fast iteration | Allows demo without credentials |
+| **API Errors Block Onboarding** | May delay legitimate onboardings | System integrity over speed; can't provision without valid data |
+| **In-place Error Simulator** | More complex implementation | Ensures all modules reference same instance |
+| **Generic APIError Fallback** | Extra try/catch blocks | Catches any unforeseen error types from simulator |
+| **Sync Processing** | Longer response times | Simpler for demo; production uses message queues |
+| **Rule-based Fallback** | Less intelligent analysis | Ensures system works without LLM connectivity |
+| **Mock APIs** | Not production-ready | Allows demo without real credentials |
 
 ### 5.2 Scalability Considerations
 
@@ -453,6 +436,7 @@ flowchart TB
 | **PII Handling** | Masking in logs, encryption at rest |
 | **Audit Trail** | Immutable logs with correlation IDs |
 | **Permission Validation** | Check permissions before API calls |
+| **Error Information** | Sanitize error details in responses |
 
 ---
 
@@ -505,80 +489,42 @@ flowchart TB
 
 ### 6.2 Agent Specialization
 
+| Agent | Responsibility | Tools |
+|-------|---------------|-------|
+| **Onboarding Coordinator** | Orchestrates workflow, makes decisions | `salesforce.get_account`, `provision.create_tenant` |
+| **Contract Agent** | Monitors signatures, sends reminders | `clm.get_contract`, `clm.send_reminder` |
+| **Finance Agent** | Tracks payments, handles dunning | `netsuite.get_invoice`, `netsuite.send_dunning` |
+| **Risk Analyzer** | Generates assessments, recommendations | `llm.analyze_risks`, `llm.generate_summary` |
+
+### 6.3 Inter-Agent Communication
+
 ```mermaid
-flowchart LR
-    subgraph OnboardingAgent["Onboarding Coordinator"]
-        OA_ROLE[Orchestrates workflow]
-        OA_TOOLS[salesforce.get_account<br/>provision.create_tenant]
-    end
+sequenceDiagram
+    participant OC as Onboarding Coordinator
+    participant CA as Contract Agent
+    participant FA as Finance Agent
+    participant RA as Risk Analyzer
     
-    subgraph ContractAgent["Contract Agent"]
-        CA_ROLE[Monitors signatures]
-        CA_TOOLS[clm.get_contract<br/>clm.send_reminder]
-    end
+    OC->>CA: Check contract status
+    CA-->>OC: Contract signed ✓
     
-    subgraph FinanceAgent["Finance Agent"]
-        FA_ROLE[Tracks payments]
-        FA_TOOLS[netsuite.get_invoice<br/>netsuite.send_dunning]
-    end
+    OC->>FA: Check invoice status
+    FA-->>OC: Invoice overdue ⚠️
     
-    subgraph RiskAgent["Risk Analyzer"]
-        RA_ROLE[Generates assessments]
-        RA_TOOLS[llm.analyze_risks<br/>llm.generate_summary]
-    end
+    OC->>RA: Analyze situation
+    RA-->>OC: Risk: Medium, Recommend: Contact finance
     
-    OnboardingAgent <-->|delegates| ContractAgent
-    OnboardingAgent <-->|delegates| FinanceAgent
-    OnboardingAgent <-->|consults| RiskAgent
-```
-
-### 6.3 Example MCP Tool Definition
-
-```json
-{
-  "name": "salesforce.get_account",
-  "description": "Retrieve account data from Salesforce CRM",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "account_id": {
-        "type": "string",
-        "description": "Salesforce Account ID"
-      }
-    },
-    "required": ["account_id"]
-  }
-}
+    OC->>FA: Send payment reminder
+    FA-->>OC: Reminder sent ✓
+    
+    OC->>OC: Decision: ESCALATE
 ```
 
 ---
 
 ## 7. Security & Governance
 
-### 7.1 Authentication Flow
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Agent
-    participant AuthService
-    participant ExternalAPI
-    
-    Client->>Agent: Request + API Key
-    Agent->>Agent: Validate API Key
-    
-    alt Invalid Key
-        Agent-->>Client: 401 Unauthorized
-    else Valid Key
-        Agent->>AuthService: Get OAuth Token
-        AuthService-->>Agent: Access Token
-        Agent->>ExternalAPI: Request + Bearer Token
-        ExternalAPI-->>Agent: Response
-        Agent-->>Client: Processed Response
-    end
-```
-
-### 7.2 Error Handling Matrix
+### 7.1 Error Handling Matrix
 
 ```mermaid
 flowchart TD
@@ -593,26 +539,26 @@ flowchart TD
     
     subgraph Actions["Agent Actions"]
         LOG[Log Error]
+        API_ERR[Add to api_errors]
         WARN[Add Warning]
         VIOL[Add Violation]
-        RETRY[Retry with Backoff]
-        CONTINUE[Continue Processing]
+        BLOCK_DEC[Decision: BLOCK]
     end
     
-    E401 --> LOG --> WARN --> CONTINUE
-    E403 --> LOG --> VIOL
-    E400 --> LOG --> VIOL
-    E404 --> LOG --> WARN --> CONTINUE
-    E429 --> LOG --> RETRY
-    E500 --> LOG --> RETRY
+    E401 --> LOG --> API_ERR --> BLOCK_DEC
+    E403 --> LOG --> API_ERR --> BLOCK_DEC
+    E400 --> LOG --> API_ERR --> BLOCK_DEC
+    E404 --> LOG --> WARN
+    E429 --> LOG --> API_ERR --> BLOCK_DEC
+    E500 --> LOG --> API_ERR --> BLOCK_DEC
 ```
 
-### 7.3 Audit Requirements
+### 7.2 Audit Requirements
 
 Every run produces:
-1. **Structured Logs**: JSON with correlation ID, timestamps, decisions
+1. **Structured Logs**: JSON with correlation ID, timestamps, decisions, API errors
 2. **LangSmith Traces**: Full execution traces with LLM calls
-3. **Run Report**: Markdown/HTML summary of actions taken
+3. **Run Report**: Markdown/HTML summary including API error details
 4. **Email Audit**: HTML emails sent to stakeholders
 5. **State Snapshot**: Complete state at each decision point
 
@@ -628,7 +574,8 @@ timeline
         Demo Ready : LangGraph orchestration
                    : Mock API integrations
                    : LLM risk analysis
-                   : Error handling
+                   : Comprehensive error handling
+                   : Configurable error simulation
                    : LangSmith tracing
     
     section Phase 2 - Production Hardening
@@ -657,33 +604,32 @@ timeline
 
 ### Salesforce
 
-| Code | Meaning |
-|------|---------|
-| `INVALID_SESSION_ID` | Auth token expired |
-| `INSUFFICIENT_ACCESS` | Permission denied |
-| `FIELD_CUSTOM_VALIDATION_EXCEPTION` | Field validation failed |
-| `REQUIRED_FIELD_MISSING` | Required field not provided |
-| `REQUEST_LIMIT_EXCEEDED` | API rate limit exceeded |
+| Code | Meaning | Agent Action |
+|------|---------|--------------|
+| `INVALID_SESSION_ID` | Auth token expired | BLOCK + api_error |
+| `INSUFFICIENT_ACCESS` | Permission denied | BLOCK + api_error |
+| `FIELD_CUSTOM_VALIDATION_EXCEPTION` | Field validation failed | BLOCK + api_error |
+| `REQUEST_LIMIT_EXCEEDED` | API rate limit exceeded | BLOCK + api_error |
 
 ### NetSuite
 
-| Code | Meaning |
-|------|---------|
-| `INVALID_LOGIN` | Auth credentials invalid |
-| `INSUFFICIENT_PERMISSION` | Permission denied |
-| `INVALID_FIELD_VALUE` | Field validation failed |
-| `RCRD_DSNT_EXIST` | Record not found |
-| `EXCEEDED_CONCURRENCY_LIMIT` | Rate limited |
+| Code | Meaning | Agent Action |
+|------|---------|--------------|
+| `INVALID_LOGIN` | Auth credentials invalid | BLOCK + api_error |
+| `INSUFFICIENT_PERMISSION` | Permission denied | BLOCK + api_error |
+| `INVALID_FIELD_VALUE` | Field validation failed | BLOCK + api_error |
+| `RCRD_DSNT_EXIST` | Record not found | Warning |
+| `EXCEEDED_CONCURRENCY_LIMIT` | Rate limited | BLOCK + api_error |
 
 ### CLM
 
-| Code | Meaning |
-|------|---------|
-| `UNAUTHORIZED` | API key invalid |
-| `FORBIDDEN` | Access denied |
-| `VALIDATION_ERROR` | Request validation failed |
-| `NOT_FOUND` | Contract not found |
-| `CONTRACT_LOCKED` | Contract being edited |
+| Code | Meaning | Agent Action |
+|------|---------|--------------|
+| `UNAUTHORIZED` | API key invalid | BLOCK + api_error |
+| `FORBIDDEN` | Access denied | BLOCK + api_error |
+| `VALIDATION_ERROR` | Request validation failed | BLOCK + api_error |
+| `NOT_FOUND` | Contract not found | Warning |
+| `CONTRACT_LOCKED` | Contract being edited | Warning |
 
 ---
 
@@ -695,9 +641,13 @@ timeline
 | BETA-002 | Opportunity not won | 🚫 BLOCK | Stage ≠ Closed Won |
 | GAMMA-003 | Invoice overdue | ⚠️ ESCALATE | Payment issue |
 | DELETED-004 | Account deleted | 🚫 BLOCK | IsDeleted = true |
-| AUTH-ERROR | API auth failure | 🚫 BLOCK | 401 Unauthorized |
-| PERM-ERROR | Permission denied | 🚫 BLOCK | 403 Forbidden |
-| SERVER-ERROR | Server error | 🚫 BLOCK | 500 Internal Error |
+
+### Error Simulation
+
+Enable via `/demo/enable-random-errors`:
+- `auth_rate=1.0` → 100% auth errors
+- `rate_limit_rate=0.5` → 50% rate limit errors
+- `server_error_rate=0.1` → 10% server errors
 
 ---
 
