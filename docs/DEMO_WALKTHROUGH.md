@@ -103,6 +103,103 @@ Runs all scenarios, generates reports only for real accounts.
 
 ---
 
+## Onboarding Task Management Demo (2 minutes)
+
+### E. View Onboarding Tasks
+After provisioning ACME-001, view the task checklist:
+
+```bash
+curl http://localhost:8000/demo/tasks/ACME-001
+```
+
+**Response shows:**
+```json
+{
+  "account_id": "ACME-001",
+  "tenant_id": "TEN-E2B91C6D",
+  "tier": "Enterprise",
+  "task_summary": {
+    "total_tasks": 14,
+    "completed": 4,
+    "pending": 9,
+    "completion_percentage": 29
+  },
+  "tasks": {
+    "by_category": {
+      "automated": ["Create Tenant ✅", "Send Welcome Email ✅", ...],
+      "cs_action": ["Schedule Kickoff Call ⏳", "Conduct Kickoff Call ⏳", ...],
+      "customer_action": ["Verify Login ⏳", "Complete Tour ⏳", ...]
+    }
+  }
+}
+```
+
+### F. Get Next Actions for CS Team
+```bash
+curl http://localhost:8000/demo/tasks/ACME-001/next-actions
+```
+
+**Response:**
+```json
+{
+  "completion_percentage": 29,
+  "cs_team_tasks": [
+    {"name": "Schedule Kickoff Call", "due_date": "2025-02-02"},
+    {"name": "Conduct Kickoff Call", "due_date": "2025-02-04"}
+  ],
+  "customer_tasks": [
+    {"name": "Verify Login Access", "due_date": "2025-02-03"},
+    {"name": "Complete Platform Tour", "due_date": "2025-02-06"}
+  ]
+}
+```
+
+### G. Update Task Status
+When CS schedules the kickoff call:
+
+```bash
+curl -X PUT "http://localhost:8000/demo/tasks/ACME-001/ACME-001-T005?status=completed&completed_by=sarah@company.com"
+```
+
+**Response:**
+```json
+{
+  "message": "Task ACME-001-T005 updated to completed",
+  "task": {
+    "name": "Schedule Kickoff Call",
+    "status": "completed",
+    "completed_at": "2025-02-01T...",
+    "completed_by": "sarah@company.com"
+  },
+  "onboarding_progress": {
+    "completed": 5,
+    "completion_percentage": 36
+  }
+}
+```
+
+### H. Check for Overdue Tasks
+For proactive CS alerts:
+
+```bash
+curl http://localhost:8000/demo/tasks/ACME-001/overdue
+```
+
+**If tasks are overdue:**
+```json
+{
+  "overdue_count": 2,
+  "alert_level": "warning",
+  "tasks": [
+    {"name": "Verify Login Access", "due_date": "2025-02-03", "owner": "customer"}
+  ]
+}
+```
+
+This enables the agent to proactively notify CS: *"Customer hasn't verified login - reach out?"*
+
+---
+
 ## Production Extension Notes
 
 ### What Would Change for Production:
