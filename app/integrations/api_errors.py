@@ -397,26 +397,68 @@ class ErrorSimulator:
         if not chosen:
             return
 
+        # Raise the appropriate error based on api_type
         if chosen == "auth":
-            raise SalesforceAuthenticationError() if api_type == "salesforce" else NetSuiteAuthenticationError()
+            if api_type == "salesforce":
+                raise SalesforceAuthenticationError()
+            elif api_type == "netsuite":
+                raise NetSuiteAuthenticationError()
+            else:
+                # For CLM and other types, raise a generic APIError that can be caught
+                raise APIError(
+                    status_code=401,
+                    error_code="AUTHENTICATION_ERROR",
+                    message=f"Simulated {api_type} authentication error",
+                    category=ErrorCategory.AUTHENTICATION
+                )
 
         if chosen == "server":
-            raise SalesforceServerError(
-                "Temporary service disruption") if api_type == "salesforce" else NetSuiteServerError(
-                "Temporary service disruption")
+            if api_type == "salesforce":
+                raise SalesforceServerError("Temporary service disruption")
+            elif api_type == "netsuite":
+                raise NetSuiteServerError("Temporary service disruption")
+            else:
+                raise APIError(
+                    status_code=500,
+                    error_code="SERVER_ERROR",
+                    message=f"Simulated {api_type} server error",
+                    category=ErrorCategory.SERVER_ERROR
+                )
 
         if chosen == "rate_limit":
-            # You may already have NetSuiteRateLimitError; for Salesforce you can add one or reuse APIError
-            raise NetSuiteRateLimitError(limit=10) if api_type != "salesforce" else APIError(
-                status_code=429, error_code="RATE_LIMIT", message="Rate limit exceeded",
-                category=ErrorCategory.RATE_LIMIT
-            )
+            if api_type == "salesforce":
+                raise APIError(
+                    status_code=429,
+                    error_code="RATE_LIMIT",
+                    message="Rate limit exceeded",
+                    category=ErrorCategory.RATE_LIMIT
+                )
+            elif api_type == "netsuite":
+                raise NetSuiteRateLimitError(limit=10)
+            else:
+                raise APIError(
+                    status_code=429,
+                    error_code="RATE_LIMIT",
+                    message=f"Simulated {api_type} rate limit error",
+                    category=ErrorCategory.RATE_LIMIT
+                )
 
         if chosen == "validation":
-            raise NetSuiteValidationError(field="entity", value="INVALID",
-                                          reason="Simulated validation failure") if api_type != "salesforce" else SalesforceValidationError(
-                field="Name", value=None, reason="Simulated validation failure"
-            )
+            if api_type == "salesforce":
+                raise SalesforceValidationError(
+                    field="Name", value=None, reason="Simulated validation failure"
+                )
+            elif api_type == "netsuite":
+                raise NetSuiteValidationError(
+                    field="entity", value="INVALID", reason="Simulated validation failure"
+                )
+            else:
+                raise APIError(
+                    status_code=400,
+                    error_code="VALIDATION_ERROR",
+                    message=f"Simulated {api_type} validation error",
+                    category=ErrorCategory.VALIDATION
+                )
 
 
 # Global error simulator (disabled by default)
@@ -429,20 +471,21 @@ def enable_error_simulation(
     rate_limit_rate: float = 0.02,
     server_error_rate: float = 0.01
 ):
-    """Enable random error simulation for testing."""
-    global ERROR_SIMULATOR
-    ERROR_SIMULATOR = ErrorSimulator(
-        auth_error_rate=auth_rate,
-        validation_error_rate=validation_rate,
-        rate_limit_error_rate=rate_limit_rate,
-        server_error_rate=server_error_rate,
-        enabled=True
-    )
+    """Enable random error simulation for testing.
+    
+    IMPORTANT: We modify the existing ERROR_SIMULATOR object in-place
+    rather than replacing it, because other modules have already imported
+    a reference to it at module load time.
+    """
+    ERROR_SIMULATOR.auth_error_rate = auth_rate
+    ERROR_SIMULATOR.validation_error_rate = validation_rate
+    ERROR_SIMULATOR.rate_limit_error_rate = rate_limit_rate
+    ERROR_SIMULATOR.server_error_rate = server_error_rate
+    ERROR_SIMULATOR.enabled = True
 
 
 def disable_error_simulation():
     """Disable error simulation."""
-    global ERROR_SIMULATOR
     ERROR_SIMULATOR.enabled = False
 
 

@@ -167,6 +167,7 @@ async def run_all_scenarios(generate_reports: bool = False):
             "risk_level": result.get("risk_analysis", {}).get("risk_level"),
             "violation_count": sum(len(v) for v in result.get("violations", {}).values()),
             "warning_count": sum(len(v) for v in result.get("warnings", {}).values()),
+            "api_error_count": len(result.get("api_errors", [])),
             "provisioned": result.get("provisioning") is not None,
         }
         
@@ -226,7 +227,10 @@ async def enable_random_errors(
     
     Rates are probabilities (0.0 to 1.0) for each error type.
     
-    Example: auth_rate=0.1 means 10% of requests will get auth errors.
+    Example: auth_rate=1.0 means 100% of requests will get auth errors.
+    
+    Note: Rates are cumulative - if auth_rate=0.5 and validation_rate=0.5,
+    50% of requests get auth errors, and the remaining 50% get validation errors.
     """
     enable_error_simulation(
         auth_rate=auth_rate,
@@ -234,13 +238,25 @@ async def enable_random_errors(
         rate_limit_rate=rate_limit_rate,
         server_error_rate=server_error_rate
     )
+    
+    # Import the actual ERROR_SIMULATOR to confirm it's enabled
+    from app.integrations.api_errors import ERROR_SIMULATOR
+    
     return {
         "status": "enabled",
+        "message": "Error simulation is now ACTIVE. API calls will fail according to configured rates.",
         "rates": {
             "authentication": auth_rate,
             "validation": validation_rate,
             "rate_limit": rate_limit_rate,
             "server_error": server_error_rate,
+        },
+        "simulator_state": {
+            "enabled": ERROR_SIMULATOR.enabled,
+            "auth_error_rate": ERROR_SIMULATOR.auth_error_rate,
+            "validation_error_rate": ERROR_SIMULATOR.validation_error_rate,
+            "rate_limit_error_rate": ERROR_SIMULATOR.rate_limit_error_rate,
+            "server_error_rate": ERROR_SIMULATOR.server_error_rate,
         }
     }
 
@@ -249,7 +265,23 @@ async def enable_random_errors(
 async def disable_random_errors():
     """Disable random error injection."""
     disable_error_simulation()
-    return {"status": "disabled"}
+    return {"status": "disabled", "message": "Error simulation is now DISABLED."}
+
+
+@router.get("/error-simulator-status")
+async def get_error_simulator_status():
+    """Check the current state of the error simulator."""
+    from app.integrations.api_errors import ERROR_SIMULATOR
+    
+    return {
+        "enabled": ERROR_SIMULATOR.enabled,
+        "rates": {
+            "auth_error_rate": ERROR_SIMULATOR.auth_error_rate,
+            "validation_error_rate": ERROR_SIMULATOR.validation_error_rate,
+            "rate_limit_error_rate": ERROR_SIMULATOR.rate_limit_error_rate,
+            "server_error_rate": ERROR_SIMULATOR.server_error_rate,
+        }
+    }
 
 
 @router.get("/notifications")

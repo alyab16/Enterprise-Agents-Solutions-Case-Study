@@ -532,6 +532,23 @@ def get_contract(account_id: str) -> Dict[str, Any]:
             "status": "API_ERROR",
             "error": str(e),
         }
+    
+    except APIError as e:
+        # Catch simulated errors from ERROR_SIMULATOR
+        log_event("clm.api.simulated_error", error=str(e), account_id=account_id, category=str(e.category))
+        status_map = {
+            ErrorCategory.AUTHENTICATION: "AUTH_ERROR",
+            ErrorCategory.AUTHORIZATION: "PERMISSION_ERROR",
+            ErrorCategory.VALIDATION: "VALIDATION_ERROR",
+            ErrorCategory.RATE_LIMIT: "RATE_LIMIT_ERROR",
+            ErrorCategory.SERVER_ERROR: "SERVER_ERROR",
+        }
+        return {
+            "contract_id": None,
+            "status": status_map.get(e.category, "API_ERROR"),
+            "error": str(e),
+            "error_code": e.error_code,
+        }
 
 
 def _transform_contract_for_agent(contract: Dict[str, Any]) -> Dict[str, Any]:

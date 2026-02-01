@@ -213,12 +213,16 @@ def analyze_risks(state: dict) -> dict:
     """Generate risk analysis without LLM."""
     violations = state.get("violations", {})
     warnings = state.get("warnings", {})
+    api_errors = state.get("api_errors", [])
     
     v_count = sum(len(v) for v in violations.values())
     w_count = sum(len(v) for v in warnings.values())
+    api_error_count = len(api_errors)
     
-    # Determine risk level
-    if v_count > 2:
+    # Determine risk level - API errors are critical
+    if api_error_count > 0:
+        risk_level = "critical"
+    elif v_count > 2:
         risk_level = "critical"
     elif v_count > 0:
         risk_level = "high"
@@ -231,6 +235,21 @@ def analyze_risks(state: dict) -> dict:
     
     # Build recommendations
     recommendations = []
+    
+    # API error recommendations
+    if api_error_count > 0:
+        for error in api_errors:
+            system = error.get("system", "api")
+            error_type = error.get("error_type", "unknown")
+            if error_type == "authentication":
+                recommendations.append({"action": f"Re-authenticate with {system.title()}", "owner": "IT/DevOps"})
+            elif error_type == "authorization":
+                recommendations.append({"action": f"Check {system.title()} API permissions", "owner": "IT/DevOps"})
+            elif error_type in ("server", "rate_limit"):
+                recommendations.append({"action": f"Retry {system.title()} API call later", "owner": "System"})
+            else:
+                recommendations.append({"action": f"Investigate {system.title()} API error", "owner": "IT/DevOps"})
+    
     if "account" in violations:
         recommendations.append({"action": "Verify account in Salesforce", "owner": "Sales Ops"})
     if "opportunity" in violations:
@@ -240,13 +259,15 @@ def analyze_risks(state: dict) -> dict:
     if "invoice" in warnings:
         recommendations.append({"action": "Follow up on payment", "owner": "Finance"})
     
-    if not recommendations and v_count == 0:
+    if not recommendations and v_count == 0 and api_error_count == 0:
         recommendations.append({"action": "Proceed with provisioning", "owner": "System"})
     
     # Summary
     account = state.get("account") or {}
     account_name = account.get("Name", state.get("account_id"))
-    if v_count > 0:
+    if api_error_count > 0:
+        summary = f"Onboarding for {account_name} is BLOCKED due to {api_error_count} API error(s)"
+    elif v_count > 0:
         summary = f"Onboarding for {account_name} is BLOCKED due to {v_count} critical issue(s)"
     elif w_count > 0:
         summary = f"Onboarding for {account_name} can proceed with caution ({w_count} warning(s))"
@@ -257,7 +278,7 @@ def analyze_risks(state: dict) -> dict:
         "summary": summary,
         "risk_level": risk_level,
         "recommended_actions": recommendations,
-        "can_proceed": v_count == 0,
+        "can_proceed": v_count == 0 and api_error_count == 0,
     }
 
 

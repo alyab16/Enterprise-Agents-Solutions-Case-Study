@@ -29,6 +29,8 @@ from app.integrations.api_errors import (
     NetSuiteRateLimitError,
     NetSuiteServerError,
     APICredentials,
+    APIError,
+    ErrorCategory,
     NETSUITE_CREDENTIALS,
     validate_netsuite_credentials,
     check_netsuite_permission,
@@ -655,6 +657,23 @@ def get_invoice(account_id: str) -> Dict[str, Any]:
             "invoice_id": None,
             "status": "API_ERROR",
             "error": str(e),
+        }
+    
+    except APIError as e:
+        # Catch simulated errors from ERROR_SIMULATOR
+        log_event("netsuite.api.simulated_error", error=str(e), account_id=account_id, category=str(e.category))
+        status_map = {
+            ErrorCategory.AUTHENTICATION: "AUTH_ERROR",
+            ErrorCategory.AUTHORIZATION: "PERMISSION_ERROR",
+            ErrorCategory.VALIDATION: "VALIDATION_ERROR",
+            ErrorCategory.RATE_LIMIT: "RATE_LIMIT_ERROR",
+            ErrorCategory.SERVER_ERROR: "SERVER_ERROR",
+        }
+        return {
+            "invoice_id": None,
+            "status": status_map.get(e.category, "API_ERROR"),
+            "error": str(e),
+            "error_code": e.error_code,
         }
 
 

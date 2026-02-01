@@ -116,6 +116,19 @@ def _build_analysis_context(state: dict) -> str:
     # Violations and warnings
     violations = state.get("violations", {})
     warnings = state.get("warnings", {})
+    api_errors = state.get("api_errors", [])
+    
+    # API errors (critical - blocking)
+    if api_errors:
+        api_error_list = []
+        for error in api_errors:
+            system = error.get("system", "api")
+            error_type = error.get("error_type", "unknown")
+            message = error.get("message", "Unknown error")
+            error_code = error.get("error_code", "UNKNOWN")
+            api_error_list.append(f"- [{system}] {error_type}: {message} (Code: {error_code})")
+        sections.append(f"""API ERRORS (CRITICAL - BLOCKING):
+{chr(10).join(api_error_list)}""")
     
     if violations:
         violation_list = []
@@ -168,13 +181,17 @@ def _rule_based_analyze(state: dict) -> dict:
     """
     violations = state.get("violations", {})
     warnings = state.get("warnings", {})
+    api_errors = state.get("api_errors", [])
     
     # Count issues
     violation_count = sum(len(msgs) for msgs in violations.values())
     warning_count = sum(len(msgs) for msgs in warnings.values())
+    api_error_count = len(api_errors)
     
-    # Determine risk level
-    if violation_count > 0:
+    # Determine risk level - API errors are always critical
+    if api_error_count > 0:
+        risk_level = "critical"
+    elif violation_count > 0:
         risk_level = "critical" if violation_count > 2 else "high"
     elif warning_count > 3:
         risk_level = "medium"
@@ -185,6 +202,19 @@ def _rule_based_analyze(state: dict) -> dict:
     
     # Build risks list
     risks = []
+    
+    # Add API errors to risks
+    for error in api_errors:
+        system = error.get("system", "api")
+        error_type = error.get("error_type", "unknown")
+        message = error.get("message", "API error occurred")
+        error_code = error.get("error_code", "UNKNOWN")
+        
+        risks.append({
+            "issue": f"{system.title()} API {error_type.replace('_', ' ').title()} Error: {message}",
+            "impact": f"Cannot fetch required data from {system.title()} - onboarding blocked",
+            "urgency": "critical"
+        })
     
     # Check for specific patterns
     if "account" in violations:
@@ -236,6 +266,36 @@ def _rule_based_analyze(state: dict) -> dict:
     recommended_actions = []
     priority = 1
     
+    # Add API error recommendations first (highest priority)
+    for error in api_errors:
+        system = error.get("system", "api")
+        error_type = error.get("error_type", "unknown")
+        if error_type == "authentication":
+            recommended_actions.append({
+                "action": f"Re-authenticate with {system.title()} - session expired or credentials invalid",
+                "owner": "IT/DevOps",
+                "priority": priority
+            })
+        elif error_type == "authorization":
+            recommended_actions.append({
+                "action": f"Check {system.title()} API permissions - access denied",
+                "owner": "IT/DevOps",
+                "priority": priority
+            })
+        elif error_type == "rate_limit":
+            recommended_actions.append({
+                "action": f"Wait and retry {system.title()} API call - rate limit exceeded",
+                "owner": "System",
+                "priority": priority
+            })
+        else:
+            recommended_actions.append({
+                "action": f"Investigate {system.title()} API error and retry",
+                "owner": "IT/DevOps",
+                "priority": priority
+            })
+        priority += 1
+    
     if "account" in violations:
         recommended_actions.append({
             "action": "Verify account exists in Salesforce and has required fields",
@@ -269,7 +329,7 @@ def _rule_based_analyze(state: dict) -> dict:
             "priority": 1
         })
     
-    if violation_count == 0 and warning_count == 0:
+    if violation_count == 0 and warning_count == 0 and api_error_count == 0:
         recommended_actions.append({
             "action": "Proceed with automated provisioning",
             "owner": "System",
@@ -280,7 +340,9 @@ def _rule_based_analyze(state: dict) -> dict:
     account = state.get("account") or {}
     account_name = account.get("Name", "Unknown Account")
     
-    if violation_count > 0:
+    if api_error_count > 0:
+        summary = f"Onboarding for {account_name} is BLOCKED due to {api_error_count} API error(s). System integration issues must be resolved."
+    elif violation_count > 0:
         summary = f"Onboarding for {account_name} is BLOCKED due to {violation_count} critical issue(s) that must be resolved."
     elif warning_count > 0:
         summary = f"Onboarding for {account_name} can proceed with caution. {warning_count} warning(s) identified for review."
@@ -292,17 +354,21 @@ def _rule_based_analyze(state: dict) -> dict:
         "risk_level": risk_level,
         "risks": risks,
         "recommended_actions": recommended_actions,
-        "estimated_resolution_time": _estimate_resolution_time(violations, warnings),
-        "can_proceed_with_warnings": violation_count == 0
+        "estimated_resolution_time": _estimate_resolution_time(violations, warnings, api_errors),
+        "can_proceed_with_warnings": violation_count == 0 and api_error_count == 0
     }
 
 
-def _estimate_resolution_time(violations: dict, warnings: dict) -> str:
+def _estimate_resolution_time(violations: dict, warnings: dict, api_errors: list = None) -> str:
     """Estimate time to resolve issues."""
+    api_errors = api_errors or []
     violation_count = sum(len(msgs) for msgs in violations.values())
     warning_count = sum(len(msgs) for msgs in warnings.values())
+    api_error_count = len(api_errors)
     
-    if violation_count == 0 and warning_count == 0:
+    if api_error_count > 0:
+        return "Variable - depends on API issue resolution (may be immediate retry or require IT intervention)"
+    elif violation_count == 0 and warning_count == 0:
         return "Immediate - ready to provision"
     elif violation_count == 0:
         return "< 1 hour if warnings acceptable"
@@ -334,9 +400,11 @@ def _fallback_summary(state: dict) -> str:
     
     violations = state.get("violations", {})
     warnings = state.get("warnings", {})
+    api_errors = state.get("api_errors", [])
     
     violation_count = sum(len(msgs) for msgs in violations.values())
     warning_count = sum(len(msgs) for msgs in warnings.values())
+    api_error_count = len(api_errors)
     
     lines = [
         f"Onboarding Status for {account_name}",
@@ -344,6 +412,7 @@ def _fallback_summary(state: dict) -> str:
         f"Decision: {decision}",
         f"Violations: {violation_count}",
         f"Warnings: {warning_count}",
+        f"API Errors: {api_error_count}",
     ]
     
     actions = state.get("actions_taken", [])

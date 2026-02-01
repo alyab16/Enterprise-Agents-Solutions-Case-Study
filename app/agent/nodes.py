@@ -340,15 +340,31 @@ def analyze_risks_node(state: AgentState) -> AgentState:
 
 
 def make_decision(state: AgentState) -> AgentState:
-    """Determine the routing decision based on violations and warnings."""
+    """Determine the routing decision based on violations, warnings, AND api_errors."""
     account_id = state.get("account_id")
     violations = state.get("violations", {})
     warnings = state.get("warnings", {})
+    api_errors = state.get("api_errors", [])
     
     violation_count = sum(len(msgs) for msgs in violations.values())
     warning_count = sum(len(msgs) for msgs in warnings.values())
+    api_error_count = len(api_errors)
     
-    if violation_count > 0:
+    # API errors are blocking - they indicate system failures that prevent onboarding
+    if api_error_count > 0:
+        state["decision"] = "BLOCK"
+        state["stage"] = "blocked"
+        # Add API errors as violations so they appear in the report
+        for error in api_errors:
+            system = error.get("system", "api")
+            error_type = error.get("error_type", "unknown")
+            message = error.get("message", "API error occurred")
+            error_code = error.get("error_code", "UNKNOWN")
+            violations.setdefault(system, []).append(
+                f"API Error ({error_type}): {message} [Code: {error_code}]"
+            )
+        state["violations"] = violations
+    elif violation_count > 0:
         state["decision"] = "BLOCK"
         state["stage"] = "blocked"
     elif warning_count > 0:
@@ -364,6 +380,7 @@ def make_decision(state: AgentState) -> AgentState:
         decision=state["decision"],
         violations=violation_count,
         warnings=warning_count,
+        api_errors=api_error_count,
     )
     
     return state
