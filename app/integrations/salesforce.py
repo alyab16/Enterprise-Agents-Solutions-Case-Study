@@ -541,6 +541,39 @@ def get_client() -> SalesforceClient:
     return _client
 
 
+# ----------------------------------------------------------------------------
+# Salesforce error → agent-safe payload (DO NOT swallow)
+# ----------------------------------------------------------------------------
+
+def _sf_api_error_payload(
+    e: SalesforceError,
+    *,
+    operation: str,
+    record_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Convert a SalesforceError into a structured payload
+    that the agent layer can record via add_api_error().
+    """
+    data = e.to_dict()
+
+    return {
+        "status": "API_ERROR",
+        "system": "salesforce",
+        "error_type": data.get("category", "server_error"),
+        "error_code": data.get("error_code", "UNKNOWN"),
+        "message": data.get("message", str(e)),
+        "http_status": data.get("status_code", 0),
+        "timestamp": data.get("timestamp"),
+        "details": {
+            **(data.get("details") or {}),
+            "operation": operation,
+            "record_id": record_id,
+            "request_id": data.get("request_id"),
+        },
+    }
+
+
 # ============================================================================
 # HIGH-LEVEL FUNCTIONS (Used by the agent)
 # ============================================================================
@@ -548,47 +581,65 @@ def get_client() -> SalesforceClient:
 def get_account(account_id: str) -> Optional[Dict[str, Any]]:
     """
     Fetch account data from Salesforce.
-    
-    Returns None if not found, raises exception on other errors.
+
+    Returns:
+    - Account dict on success
+    - None if not found
+    - API_ERROR payload on Salesforce failure
     """
     client = get_client()
-    
+
     try:
         return client.get_account(account_id)
+
     except SalesforceNotFoundError:
         log_event("salesforce.account.not_found", account_id=account_id)
         return None
+
     except SalesforceError as e:
         log_event("salesforce.account.error", account_id=account_id, error=str(e))
-        # For the agent, we return None on errors but log them
-        # In production, you might want to re-raise or handle differently
-        return None
-
+        return _sf_api_error_payload(
+            e,
+            operation="get_account",
+            record_id=account_id,
+        )
 
 def get_user(user_id: str) -> Optional[Dict[str, Any]]:
     """Fetch user data from Salesforce."""
     client = get_client()
-    
+
     try:
         return client.get_user(user_id)
+
     except SalesforceNotFoundError:
         return None
+
     except SalesforceError as e:
         log_event("salesforce.user.error", user_id=user_id, error=str(e))
-        return None
+        return _sf_api_error_payload(
+            e,
+            operation="get_user",
+            record_id=user_id,
+        )
 
 
 def get_opportunity(opportunity_id: str) -> Optional[Dict[str, Any]]:
     """Fetch opportunity data from Salesforce."""
     client = get_client()
-    
+
     try:
         return client.get_opportunity(opportunity_id)
+
     except SalesforceNotFoundError:
         return None
+
     except SalesforceError as e:
         log_event("salesforce.opportunity.error", opportunity_id=opportunity_id, error=str(e))
-        return None
+        return _sf_api_error_payload(
+            e,
+            operation="get_opportunity",
+            record_id=opportunity_id,
+        )
 
 
 def get_opportunity_by_account(account_id: str) -> Optional[Dict[str, Any]]:
@@ -608,14 +659,21 @@ def get_opportunity_by_account(account_id: str) -> Optional[Dict[str, Any]]:
 def get_contract(contract_id: str) -> Optional[Dict[str, Any]]:
     """Fetch contract data from Salesforce."""
     client = get_client()
-    
+
     try:
         return client.get_contract(contract_id)
+
     except SalesforceNotFoundError:
         return None
+
     except SalesforceError as e:
         log_event("salesforce.contract.error", contract_id=contract_id, error=str(e))
-        return None
+        return _sf_api_error_payload(
+            e,
+            operation="get_contract",
+            record_id=contract_id,
+        )
+
 
 
 def get_contract_by_account(account_id: str) -> Optional[Dict[str, Any]]:

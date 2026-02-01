@@ -373,26 +373,50 @@ class ErrorSimulator:
         self.rate_limit_error_rate = rate_limit_error_rate
         self.server_error_rate = server_error_rate
         self.enabled = enabled
-    
+
     def maybe_raise_error(self, api_type: str = "salesforce") -> None:
-        """Randomly raise an error based on configured rates."""
         if not self.enabled:
             return
-        
+
+        # One roll across buckets
         roll = random.random()
-        
-        if roll < self.auth_error_rate:
-            if api_type == "salesforce":
-                raise SalesforceAuthenticationError()
-            else:
-                raise NetSuiteAuthenticationError()
-        
-        roll = random.random()
-        if roll < self.server_error_rate:
-            if api_type == "salesforce":
-                raise SalesforceServerError("Temporary service disruption")
-            else:
-                raise NetSuiteServerError("Temporary service disruption")
+        thresholds = [
+            ("auth", self.auth_error_rate),
+            ("validation", self.validation_error_rate),
+            ("rate_limit", self.rate_limit_error_rate),
+            ("server", self.server_error_rate),
+        ]
+
+        cumulative = 0.0
+        chosen = None
+        for name, rate in thresholds:
+            cumulative += max(0.0, rate)
+            if roll < cumulative:
+                chosen = name
+                break
+        if not chosen:
+            return
+
+        if chosen == "auth":
+            raise SalesforceAuthenticationError() if api_type == "salesforce" else NetSuiteAuthenticationError()
+
+        if chosen == "server":
+            raise SalesforceServerError(
+                "Temporary service disruption") if api_type == "salesforce" else NetSuiteServerError(
+                "Temporary service disruption")
+
+        if chosen == "rate_limit":
+            # You may already have NetSuiteRateLimitError; for Salesforce you can add one or reuse APIError
+            raise NetSuiteRateLimitError(limit=10) if api_type != "salesforce" else APIError(
+                status_code=429, error_code="RATE_LIMIT", message="Rate limit exceeded",
+                category=ErrorCategory.RATE_LIMIT
+            )
+
+        if chosen == "validation":
+            raise NetSuiteValidationError(field="entity", value="INVALID",
+                                          reason="Simulated validation failure") if api_type != "salesforce" else SalesforceValidationError(
+                field="Name", value=None, reason="Simulated validation failure"
+            )
 
 
 # Global error simulator (disabled by default)

@@ -39,7 +39,7 @@ def init_node(state: AgentState) -> AgentState:
 def fetch_salesforce_data(state: AgentState) -> AgentState:
     """Fetch all relevant data from Salesforce."""
     account_id = state.get("account_id")
-    
+
     log_state_transition(
         from_stage=state.get("stage"),
         to_stage="fetching_salesforce",
@@ -47,74 +47,98 @@ def fetch_salesforce_data(state: AgentState) -> AgentState:
         correlation_id=state.get("correlation_id"),
     )
     state["stage"] = "fetching_salesforce"
-    
-    # Fetch account - check for error scenarios
+
+    # ------------------------------------------------------------------
+    # Fetch Account
+    # ------------------------------------------------------------------
     account = salesforce.get_account(account_id)
-    
-    # Check if the account fetch returned an error indicator
-    if account is None and account_id in ["AUTH-ERROR", "PERM-ERROR", "SERVER-ERROR"]:
-        # These are error simulation accounts - record the API error
-        error_map = {
-            "AUTH-ERROR": {
-                "error_type": "authentication",
-                "error_code": "INVALID_SESSION_ID",
-                "message": "Session expired or invalid",
-                "http_status": 401,
-            },
-            "PERM-ERROR": {
-                "error_type": "authorization",
-                "error_code": "INSUFFICIENT_ACCESS",
-                "message": "Insufficient privileges to access Account",
-                "http_status": 403,
-            },
-            "SERVER-ERROR": {
-                "error_type": "server",
-                "error_code": "SERVER_ERROR",
-                "message": "Service temporarily unavailable",
-                "http_status": 500,
-            },
-        }
-        error_info = error_map.get(account_id, {})
+
+    # 🚨 Handle Salesforce API error (DO NOT SWALLOW)
+    if isinstance(account, dict) and account.get("status") == "API_ERROR":
         add_api_error(
             state,
             system="salesforce",
-            error_type=error_info.get("error_type", "server"),
-            error_code=error_info.get("error_code", "UNKNOWN"),
-            message=error_info.get("message", "Unknown error"),
-            http_status=error_info.get("http_status", 500),
-            details={"account_id": account_id, "operation": "get_account"}
+            error_type=account["error_type"],
+            error_code=account["error_code"],
+            message=account["message"],
+            http_status=account.get("http_status", 0),
+            details=account.get("details", {}),
         )
-    
+        return state
+
+    # Legitimate not-found (business logic)
+    if account is None:
+        add_violation(
+            state,
+            "salesforce",
+            f"Account {account_id} not found in Salesforce"
+        )
+        return state
+
+    # Success path
     state["account"] = account
-    
-    if account:
-        # Fetch related data
-        owner_id = account.get("OwnerId")
-        if owner_id:
-            state["user"] = salesforce.get_user(owner_id)
-        
-        # Fetch opportunity
-        state["opportunity"] = salesforce.get_opportunity_by_account(account_id)
-        
-        # Fetch contract
-        state["contract"] = salesforce.get_contract_by_account(account_id)
-    
+
+    # ------------------------------------------------------------------
+    # Fetch Account Owner (User)
+    # ------------------------------------------------------------------
+    owner_id = account.get("OwnerId")
+    if owner_id:
+        user = salesforce.get_user(owner_id)
+
+        # 🚨 Handle Salesforce API error
+        if isinstance(user, dict) and user.get("status") == "API_ERROR":
+            add_api_error(
+                state,
+                system="salesforce",
+                error_type=user["error_type"],
+                error_code=user["error_code"],
+                message=user["message"],
+                http_status=user.get("http_status", 0),
+                details=user.get("details", {}),
+            )
+            return state
+
+        # Legitimate not-found (user missing)
+        if user is None:
+            add_violation(
+                state,
+                "salesforce",
+                f"Owner user {owner_id} not found in Salesforce"
+            )
+            return state
+
+        state["user"] = user
+
+    # ------------------------------------------------------------------
+    # Fetch Opportunity (mock lookup – no API errors)
+    # ------------------------------------------------------------------
+    state["opportunity"] = salesforce.get_opportunity_by_account(account_id)
+
+    # ------------------------------------------------------------------
+    # Fetch Contract (mock lookup – no API errors)
+    # ------------------------------------------------------------------
+    state["contract"] = salesforce.get_contract_by_account(account_id)
+
+    # ------------------------------------------------------------------
+    # Logging
+    # ------------------------------------------------------------------
     log_event(
         "salesforce.fetched",
         account_id=account_id,
-        has_account=account is not None,
+        has_account=True,
+        has_user=state.get("user") is not None,
         has_opportunity=state.get("opportunity") is not None,
         has_contract=state.get("contract") is not None,
         api_errors=len(state.get("api_errors", [])),
     )
-    
+
     return state
 
 
 def fetch_clm_data(state: AgentState) -> AgentState:
     """Fetch contract status from CLM system."""
     account_id = state.get("account_id")
-    
+
     log_state_transition(
         from_stage=state.get("stage"),
         to_stage="fetching_clm",
@@ -122,20 +146,28 @@ def fetch_clm_data(state: AgentState) -> AgentState:
         correlation_id=state.get("correlation_id"),
     )
     state["stage"] = "fetching_clm"
-    
+
     clm_data = clm.get_contract(account_id)
-    state["clm"] = clm_data
-    
-    # Check for CLM API errors
-    clm_status = clm_data.get("status", "")
-    if clm_status in ["AUTH_ERROR", "PERMISSION_ERROR", "SERVER_ERROR", "API_ERROR"]:
+
+    # 🚨 Handle CLM API errors (DO NOT SWALLOW)
+    if isinstance(clm_data, dict) and clm_data.get("status") in {
+        "AUTH_ERROR",
+        "PERMISSION_ERROR",
+        "SERVER_ERROR",
+        "API_ERROR",
+    }:
         error_type_map = {
             "AUTH_ERROR": ("authentication", "UNAUTHORIZED", 401),
             "PERMISSION_ERROR": ("authorization", "FORBIDDEN", 403),
             "SERVER_ERROR": ("server", "INTERNAL_ERROR", 500),
             "API_ERROR": ("server", "API_ERROR", 500),
         }
-        error_type, error_code, http_status = error_type_map.get(clm_status, ("server", "UNKNOWN", 500))
+
+        error_type, error_code, http_status = error_type_map.get(
+            clm_data.get("status"),
+            ("server", "UNKNOWN", 500),
+        )
+
         add_api_error(
             state,
             system="clm",
@@ -143,23 +175,40 @@ def fetch_clm_data(state: AgentState) -> AgentState:
             error_code=error_code,
             message=clm_data.get("error", "CLM API error"),
             http_status=http_status,
-            details={"account_id": account_id, "operation": "get_contract"}
+            details={
+                "account_id": account_id,
+                "operation": "get_contract",
+                "clm_status": clm_data.get("status"),
+            },
         )
-    
+        return state
+
+    # Legitimate no-contract case (business logic)
+    if clm_data is None:
+        add_violation(
+            state,
+            "clm",
+            f"No CLM contract found for account {account_id}"
+        )
+        return state
+
+    # Success path
+    state["clm"] = clm_data
+
     log_event(
         "clm.fetched",
         account_id=account_id,
-        clm_status=clm_status,
+        clm_status=clm_data.get("status"),
         api_errors=len(state.get("api_errors", [])),
     )
-    
+
     return state
 
 
 def fetch_invoice_data(state: AgentState) -> AgentState:
     """Fetch invoice status from NetSuite."""
     account_id = state.get("account_id")
-    
+
     log_state_transition(
         from_stage=state.get("stage"),
         to_stage="fetching_invoice",
@@ -167,13 +216,17 @@ def fetch_invoice_data(state: AgentState) -> AgentState:
         correlation_id=state.get("correlation_id"),
     )
     state["stage"] = "fetching_invoice"
-    
+
     invoice = netsuite.get_invoice(account_id)
-    state["invoice"] = invoice
-    
-    # Check for NetSuite API errors
-    invoice_status = invoice.get("status", "")
-    if invoice_status in ["AUTH_ERROR", "PERMISSION_ERROR", "VALIDATION_ERROR", "SERVER_ERROR", "API_ERROR"]:
+
+    # 🚨 Handle NetSuite API errors (DO NOT SWALLOW)
+    if isinstance(invoice, dict) and invoice.get("status") in {
+        "AUTH_ERROR",
+        "PERMISSION_ERROR",
+        "VALIDATION_ERROR",
+        "SERVER_ERROR",
+        "API_ERROR",
+    }:
         error_type_map = {
             "AUTH_ERROR": ("authentication", "INVALID_LOGIN", 401),
             "PERMISSION_ERROR": ("authorization", "INSUFFICIENT_PERMISSION", 403),
@@ -181,7 +234,12 @@ def fetch_invoice_data(state: AgentState) -> AgentState:
             "SERVER_ERROR": ("server", "UNEXPECTED_ERROR", 500),
             "API_ERROR": ("server", "API_ERROR", 500),
         }
-        error_type, error_code, http_status = error_type_map.get(invoice_status, ("server", "UNKNOWN", 500))
+
+        error_type, error_code, http_status = error_type_map.get(
+            invoice.get("status"),
+            ("server", "UNKNOWN", 500),
+        )
+
         add_api_error(
             state,
             system="netsuite",
@@ -192,17 +250,31 @@ def fetch_invoice_data(state: AgentState) -> AgentState:
             details={
                 "account_id": account_id,
                 "operation": "get_invoice",
-                "error_details": invoice.get("error_details", {})
-            }
+                "invoice_id": invoice.get("invoice_id"),
+                "error_details": invoice.get("error_details", {}),
+            },
         )
-    
+        return state
+
+    # Legitimate no-invoice case (business logic)
+    if invoice is None:
+        add_violation(
+            state,
+            "netsuite",
+            f"No invoice found for account {account_id}"
+        )
+        return state
+
+    # Success path
+    state["invoice"] = invoice
+
     log_event(
         "invoice.fetched",
         account_id=account_id,
-        invoice_status=invoice_status,
+        invoice_status=invoice.get("status"),
         api_errors=len(state.get("api_errors", [])),
     )
-    
+
     return state
 
 

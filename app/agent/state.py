@@ -12,6 +12,14 @@ class APIErrorInfo(TypedDict, total=False):
     details: Dict[str, Any]  # Additional error details
     resolution: str  # How to fix this error
 
+    description: str
+    owner: str
+    error_id: str
+    correlation_id: str
+    stage: str
+    account_id: str
+    entity_context: Dict[str, Any]
+
 
 class AgentState(TypedDict, total=False):
     # Metadata

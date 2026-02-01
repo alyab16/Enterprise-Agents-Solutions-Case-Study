@@ -312,55 +312,108 @@ def generate_api_error_notification_email(
     correlation_id: str,
 ) -> str:
     """Generate HTML email for API integration error notification."""
-    
-    # Build error details
+
+    def html_escape(s: Any) -> str:
+        s = "" if s is None else str(s)
+        return (
+            s.replace("&", "&amp;")
+             .replace("<", "&lt;")
+             .replace(">", "&gt;")
+             .replace('"', "&quot;")
+             .replace("'", "&#39;")
+        )
+
     errors_html = ""
     for i, error in enumerate(api_errors, 1):
-        system = error.get("system", "unknown").upper()
-        error_type = error.get("error_type", "unknown").replace("_", " ").title()
-        error_code = error.get("error_code", "UNKNOWN")
-        http_status = error.get("http_status", 0)
-        message = error.get("message", "No message")
-        description = error.get("description", message)
-        resolution = error.get("resolution", "Contact the integration administrator.")
-        owner = error.get("owner", "Support Team")
-        
+        system = html_escape(error.get("system", "unknown").upper())
+        error_type = html_escape(error.get("error_type", "unknown").replace("_", " ").title())
+        error_code = html_escape(error.get("error_code", "UNKNOWN"))
+        http_status = html_escape(error.get("http_status", 0))
+
+        # IMPORTANT: show RAW message + run context (Fix B)
+        raw_message = html_escape(error.get("message", "No message"))
+        description = html_escape(error.get("description", ""))  # keep as secondary “meaning”
+        resolution = html_escape(error.get("resolution", "Contact the integration administrator."))
+        owner = html_escape(error.get("owner", "Support Team"))
+
+        error_id = html_escape(error.get("error_id", ""))
+        stage = html_escape(error.get("stage", ""))
+        acc = html_escape(error.get("account_id", account_id))
+
+        details = error.get("details", {}) or {}
+        op = html_escape(details.get("operation", "unknown"))
+        req_id = html_escape(details.get("request_id", ""))
+        entity_ctx = error.get("entity_context") or details.get("entity_context") or {}
+
+        try:
+            details_pretty = html_escape(json.dumps(details, indent=2, sort_keys=True))
+        except Exception:
+            details_pretty = html_escape(str(details))
+
+        # Render entity context as a compact line
+        entity_bits = []
+        if isinstance(entity_ctx, dict):
+            for k, v in entity_ctx.items():
+                if v:
+                    entity_bits.append(f"{k}={html_escape(v)}")
+        entity_line = ", ".join(entity_bits) if entity_bits else "N/A"
+
         errors_html += f"""
         <div style="background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 15px; margin-bottom: 15px;">
             <h4 style="margin: 0 0 10px 0; color: #856404;">🔌 {system} Integration Error</h4>
+
             <table style="width: 100%; font-size: 14px;">
-                <tr><td style="padding: 4px 0; width: 120px;"><strong>Error Type:</strong></td><td>{error_type}</td></tr>
-                <tr><td style="padding: 4px 0;"><strong>Error Code:</strong></td><td><code style="background: #f4f4f4; padding: 2px 6px; border-radius: 3px;">{error_code}</code></td></tr>
+                <tr><td style="padding: 4px 0; width: 140px;"><strong>Error ID:</strong></td><td><code style="background:#f4f4f4;padding:2px 6px;border-radius:3px;">{error_id}</code></td></tr>
+                <tr><td style="padding: 4px 0;"><strong>Stage:</strong></td><td>{stage}</td></tr>
+                <tr><td style="padding: 4px 0;"><strong>Account:</strong></td><td>{acc}</td></tr>
+                <tr><td style="padding: 4px 0;"><strong>Correlation ID:</strong></td><td><code style="background:#f4f4f4;padding:2px 6px;border-radius:3px;">{html_escape(correlation_id)}</code></td></tr>
+                <tr><td style="padding: 4px 0;"><strong>Operation:</strong></td><td>{op}</td></tr>
+                <tr><td style="padding: 4px 0;"><strong>Request ID:</strong></td><td>{req_id or "N/A"}</td></tr>
+                <tr><td style="padding: 4px 0;"><strong>Entities:</strong></td><td>{entity_line}</td></tr>
+                <tr><td style="padding: 4px 0;"><strong>Error Type:</strong></td><td>{error_type}</td></tr>
+                <tr><td style="padding: 4px 0;"><strong>Error Code:</strong></td><td><code style="background:#f4f4f4;padding:2px 6px;border-radius:3px;">{error_code}</code></td></tr>
                 <tr><td style="padding: 4px 0;"><strong>HTTP Status:</strong></td><td>{http_status}</td></tr>
             </table>
+
             <div style="margin-top: 10px; padding: 10px; background-color: #fff; border-radius: 4px;">
-                <p style="margin: 0 0 5px 0;"><strong>What This Means:</strong></p>
-                <p style="margin: 0; color: #555;">{description}</p>
+                <p style="margin: 0 0 5px 0;"><strong>Raw Message (from API):</strong></p>
+                <p style="margin: 0; color: #111;">{raw_message}</p>
             </div>
+
+            <div style="margin-top: 10px; padding: 10px; background-color: #fff; border-radius: 4px;">
+                <p style="margin: 0 0 5px 0;"><strong>What This Means (guidance):</strong></p>
+                <p style="margin: 0; color: #555;">{description or raw_message}</p>
+            </div>
+
             <div style="margin-top: 10px; padding: 10px; background-color: #d4edda; border-radius: 4px;">
                 <p style="margin: 0 0 5px 0;"><strong>How to Fix:</strong></p>
                 <p style="margin: 0; color: #155724;">{resolution}</p>
                 <p style="margin: 5px 0 0 0; font-size: 12px; color: #888;"><em>Responsible: {owner}</em></p>
             </div>
+
+            <div style="margin-top: 10px; padding: 10px; background-color: #f8f9fa; border-radius: 4px;">
+                <p style="margin: 0 0 5px 0;"><strong>Details (debug):</strong></p>
+                <pre style="margin: 0; white-space: pre-wrap; font-size: 12px;">{details_pretty}</pre>
+            </div>
         </div>
         """
-    
+
     sections = [
         {
             "title": "⚠️ API Integration Error",
             "content": f"""
                 <div style="background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; padding: 15px; margin-bottom: 15px;">
                     <p style="margin: 0; color: #721c24;">
-                        The onboarding process for <strong>{account_name}</strong> has been blocked due to API integration errors.
-                        These are typically temporary issues or configuration problems that can be resolved.
+                        The onboarding process for <strong>{html_escape(account_name)}</strong> has been blocked due to API integration errors.
+                    </p>
+                    <p style="margin: 8px 0 0 0; color: #721c24;">
+                        <strong>Account ID:</strong> {html_escape(account_id)}<br/>
+                        <strong>Correlation ID:</strong> <code style="background:#f4f4f4;padding:2px 6px;border-radius:3px;">{html_escape(correlation_id)}</code>
                     </p>
                 </div>
             """
         },
-        {
-            "title": "🔍 Error Details",
-            "content": errors_html
-        },
+        {"title": "🔍 Error Details", "content": errors_html},
         {
             "title": "📋 Immediate Actions Required",
             "content": """
@@ -376,14 +429,14 @@ def generate_api_error_notification_email(
             "title": "🔗 Quick Links",
             "content": f"""
                 <p>
-                    <a href="https://agent.example.com/runs/{correlation_id}" style="color: #667eea; text-decoration: none;">View Agent Run</a> |
+                    <a href="https://agent.example.com/runs/{html_escape(correlation_id)}" style="color: #667eea; text-decoration: none;">View Agent Run</a> |
                     <a href="https://integrations.example.com/status" style="color: #667eea; text-decoration: none;">Integration Status</a> |
                     <a href="https://docs.example.com/troubleshooting" style="color: #667eea; text-decoration: none;">Troubleshooting Guide</a>
                 </p>
             """
-        }
+        },
     ]
-    
+
     return generate_email_html(
         to="integration-alerts@stackadapt.com",
         subject=f"⚠️ API Integration Error - {account_name} Onboarding Blocked",
@@ -392,9 +445,6 @@ def generate_api_error_notification_email(
     )
 
 
-# ============================================================================
-# MARKDOWN REPORT GENERATOR
-# ============================================================================
 
 def generate_run_report_markdown(
     account_id: str,
@@ -412,43 +462,66 @@ def generate_run_report_markdown(
     duration_ms: int = 0,
 ) -> str:
     """Generate a detailed Markdown report for an onboarding run."""
-    
-    timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
     api_errors = api_errors or []
-    
-    # Decision emoji
+
     decision_emoji = {"PROCEED": "✅", "ESCALATE": "⚠️", "BLOCK": "🚫"}.get(decision, "❓")
-    
-    # Check if this is an error scenario
     is_error_scenario = len(api_errors) > 0
-    
-    # Build API errors section (if any)
+
     api_errors_md = ""
     if api_errors:
         api_errors_md = "\n---\n\n## ⚠️ API Integration Errors\n\n"
-        api_errors_md += "> **This run failed due to API integration errors.** The issues below must be resolved before onboarding can proceed.\n\n"
-        
+        api_errors_md += (
+            "> **This run failed due to API integration errors.** "
+            "The issues below must be resolved before onboarding can proceed.\n\n"
+        )
+
         for i, error in enumerate(api_errors, 1):
-            system = error.get("system", "unknown").upper()
-            error_type = error.get("error_type", "unknown")
-            error_code = error.get("error_code", "UNKNOWN")
-            message = error.get("message", "No message")
+            system = str(error.get("system", "unknown")).upper()
+            error_type = str(error.get("error_type", "unknown"))
+            error_code = str(error.get("error_code", "UNKNOWN"))
+            message = str(error.get("message", "No message"))
             http_status = error.get("http_status", 0)
-            description = error.get("description", "")
-            resolution = error.get("resolution", "")
-            owner = error.get("owner", "Support Team")
-            
+            description = str(error.get("description", ""))
+            resolution = str(error.get("resolution", ""))
+            owner = str(error.get("owner", "Support Team"))
+
+            error_id = str(error.get("error_id", ""))
+            error_stage = str(error.get("stage", stage))
+            error_account_id = str(error.get("account_id", account_id))
+
+            details = error.get("details", {}) or {}
+            entity_ctx = error.get("entity_context") or details.get("entity_context") or {}
+
+            operation = details.get("operation", "unknown")
+            request_id = details.get("request_id", "")
+
+            entity_ctx_json = json.dumps(entity_ctx, indent=2, sort_keys=True)
+            details_json = json.dumps(details, indent=2, sort_keys=True)
+
             api_errors_md += f"""### Error {i}: {system} - {error_type.replace('_', ' ').title()}
 
 | Field | Value |
 |-------|-------|
+| **Error ID** | `{error_id}` |
+| **Stage** | {error_stage} |
+| **Account** | `{error_account_id}` |
+| **Correlation ID** | `{correlation_id}` |
 | **System** | {system} |
 | **Error Type** | {error_type.replace('_', ' ').title()} |
 | **Error Code** | `{error_code}` |
 | **HTTP Status** | {http_status} |
-| **Message** | {message} |
+| **Message (raw)** | {message} |
+| **Operation** | `{operation}` |
+| **Request ID** | `{request_id}` |
 
-**What This Means:**
+**Entity Context:**
+```json
+{entity_ctx_json}
+```
+
+**What This Means (guidance):**
 {description or message}
 
 **How to Fix:**
@@ -456,9 +529,13 @@ def generate_run_report_markdown(
 
 **Responsible Team:** {owner}
 
+**Details (debug):**
+```json
+{details_json}
+```
+
 """
-    
-    # Build violations section
+
     violations_md = ""
     if violations and any(violations.values()):
         for domain, msgs in violations.items():
@@ -466,8 +543,7 @@ def generate_run_report_markdown(
                 violations_md += f"- **{domain}**: {msg}\n"
     else:
         violations_md = "_None_\n"
-    
-    # Build warnings section
+
     warnings_md = ""
     if warnings and any(warnings.values()):
         for domain, msgs in warnings.items():
@@ -475,26 +551,22 @@ def generate_run_report_markdown(
                 warnings_md += f"- **{domain}**: {msg}\n"
     else:
         warnings_md = "_None_\n"
-    
-    # Build actions section
+
     actions_md = ""
     if actions_taken:
         for action in actions_taken:
             actions_md += f"- {action.get('type', 'unknown')}: {json.dumps(action)}\n"
     else:
         actions_md = "_None_\n"
-    
-    # Build notifications section
+
     notifications_md = ""
     if notifications_sent:
         for notif in notifications_sent:
-            channel = notif.get('channel', notif.get('to', 'unknown'))
+            channel = notif.get("channel", notif.get("to", "unknown"))
             notifications_md += f"- {notif.get('type', 'unknown')} → {channel}\n"
     else:
         notifications_md = "_None_\n"
-    
-    # Build provisioning section
-    provisioning_md = ""
+
     if provisioning:
         provisioning_md = f"""
 | Field | Value |
@@ -505,26 +577,30 @@ def generate_run_report_markdown(
 """
     else:
         provisioning_md = "_Not provisioned_"
-    
-    # Risk analysis
-    risk_level = risk_analysis.get('risk_level', 'N/A').upper()
-    summary = risk_analysis.get('summary', 'No summary available')
-    
+
+    risk_level = str(risk_analysis.get("risk_level", "N/A")).upper()
+    summary = risk_analysis.get("summary", "No summary available")
+
     recommended_actions_md = ""
-    for i, action in enumerate(risk_analysis.get('recommended_actions', []), 1):
+    for i, action in enumerate(risk_analysis.get("recommended_actions", []), 1):
         if isinstance(action, dict):
-            recommended_actions_md += f"{i}. {action.get('action', str(action))} _(Owner: {action.get('owner', 'TBD')})_\n"
+            recommended_actions_md += (
+                f"{i}. {action.get('action', str(action))} "
+                f"_(Owner: {action.get('owner', 'TBD')})_\n"
+            )
         else:
             recommended_actions_md += f"{i}. {action}\n"
-    
+
     if not recommended_actions_md:
         recommended_actions_md = "_None_"
-    
-    # Determine scenario type for header
+
     scenario_type = ""
     if is_error_scenario:
-        scenario_type = "\n\n> ⚠️ **API ERROR SCENARIO**: This run encountered integration failures. See the API Integration Errors section below for details and resolution steps.\n"
-    
+        scenario_type = (
+            "\n\n> ⚠️ **API ERROR SCENARIO**: This run encountered integration failures. "
+            "See the API Integration Errors section below for details and resolution steps.\n"
+        )
+
     markdown = f"""# Onboarding Run Report
 
 ## Summary
@@ -588,7 +664,7 @@ def generate_run_report_markdown(
 
 _This report was automatically generated by the Enterprise Onboarding Agent._
 """
-    
+
     return markdown
 
 

@@ -2,7 +2,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 import uuid
 from .state import AgentState, APIErrorInfo
-
+from app.logging.logger import log_event
 
 # Error resolution guides
 ERROR_RESOLUTIONS = {
@@ -157,7 +157,6 @@ def add_warning(state: AgentState, domain: str, message: str) -> None:
         state["warnings"] = {}
     state["warnings"].setdefault(domain, []).append(message)
 
-
 def add_api_error(
     state: AgentState,
     system: str,
@@ -169,40 +168,89 @@ def add_api_error(
 ) -> None:
     """
     Record an API error with full context and resolution guidance.
-    
-    Args:
-        state: The agent state
-        system: The system that failed (salesforce, netsuite, clm, provisioning)
-        error_type: Type of error (authentication, authorization, validation, server, rate_limit)
-        error_code: The specific error code (e.g., INVALID_SESSION_ID)
-        message: The error message from the API
-        http_status: HTTP status code
-        details: Additional error details
+
+    Fix A:
+      - attach correlation_id, stage, account_id
+      - attach entity_context (account/opportunity/contract/user/invoice/clm IDs if present)
+      - attach unique error_id
+      - keep raw message visible in downstream reports
     """
     if state.get("api_errors") is None:
         state["api_errors"] = []
-    
-    # Get resolution guidance
+
+    # Resolution guidance (templated)
     resolution_info = get_error_resolution(error_type, system)
-    
+
+    error_id = uuid.uuid4().hex[:12]
+    correlation_id = state.get("correlation_id", "")
+    stage = state.get("stage", "")
+    account_id = state.get("account_id", "")
+
+    # Safely grab IDs from whatever we have in state (if present)
+    def _safe_get_id(obj: Any, key: str = "Id") -> str:
+        return obj.get(key) if isinstance(obj, dict) else ""
+
+    entity_context = {
+        "salesforce_account_id": _safe_get_id(state.get("account")),
+        "opportunity_id": _safe_get_id(state.get("opportunity")),
+        "contract_id": _safe_get_id(state.get("contract")),
+        "user_id": _safe_get_id(state.get("user")),
+        # Some integrations may use different keys; include best-effort alternatives:
+        "netsuite_invoice_id": _safe_get_id(state.get("invoice"), "invoice_id") or _safe_get_id(state.get("invoice"), "Id"),
+        "clm_contract_id": _safe_get_id(state.get("clm"), "contract_id") or _safe_get_id(state.get("clm"), "Id"),
+    }
+
+    # Enrich details (without overwriting caller-provided fields)
+    enriched_details = dict(details or {})
+    enriched_details.setdefault("operation", enriched_details.get("operation") or "unknown")
+    enriched_details.setdefault("request_id", enriched_details.get("request_id") or "")
+    enriched_details.setdefault("account_id", account_id)
+    enriched_details.setdefault("correlation_id", correlation_id)
+    enriched_details.setdefault("stage", stage)
+    enriched_details.setdefault("error_id", error_id)
+    enriched_details.setdefault("entity_context", entity_context)
+
     error_info: APIErrorInfo = {
         "system": system,
         "error_type": error_type,
         "error_code": error_code,
-        "message": message,
+        "message": message,  # <- RAW message preserved (this fixes “generic”)
         "http_status": http_status,
         "timestamp": datetime.utcnow().isoformat(),
-        "details": details or {},
+        "details": enriched_details,
         "resolution": resolution_info.get("resolution", ""),
         "description": resolution_info.get("description", ""),
         "owner": resolution_info.get("owner", "Support Team"),
+        "error_id": error_id,
+        "correlation_id": correlation_id,
+        "stage": stage,
+        "account_id": account_id,
+        "entity_context": entity_context,
     }
-    
+
     state["api_errors"].append(error_info)
-    
-    # Also add a violation for blocking errors
-    violation_msg = f"{system.upper()} API Error [{error_code}]: {resolution_info.get('description', message)}"
+
+    # Log a structured event (helps you debug runs outside the report)
+    log_event(
+        "api_error.recorded",
+        account_id=account_id,
+        correlation_id=correlation_id,
+        stage=stage,
+        system=system,
+        error_type=error_type,
+        error_code=error_code,
+        http_status=http_status,
+        error_id=error_id,
+        operation=enriched_details.get("operation"),
+        request_id=enriched_details.get("request_id"),
+        entity_context=entity_context,
+    )
+
+    # Make the violation non-generic too (include operation + raw message)
+    op = enriched_details.get("operation", "unknown")
+    violation_msg = f"{system.upper()} API Error [{error_code}] during {op}: {message}"
     add_violation(state, "api_error", violation_msg)
+
 
 
 def has_api_errors(state: AgentState) -> bool:
