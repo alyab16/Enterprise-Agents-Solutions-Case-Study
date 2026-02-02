@@ -1,5 +1,5 @@
 \documentclass[9pt,a4paper]{article}
-\usepackage[margin=0.5in,top=0.45in,bottom=0.45in]{geometry}
+\usepackage[margin=0.5in,top=0.4in,bottom=0.4in]{geometry}
 \usepackage{titlesec}
 \usepackage{enumitem}
 \usepackage{hyperref}
@@ -10,14 +10,13 @@
 \usepackage{graphicx}
 \usepackage{float}
 \usepackage{multicol}
-\usepackage{wrapfig}
 
 % Tight spacing
-\setlength{\parskip}{0.15em}
+\setlength{\parskip}{0.1em}
 \setlength{\parindent}{0pt}
-\titlespacing*{\section}{0pt}{0.4em}{0.15em}
-\titlespacing*{\subsection}{0pt}{0.25em}{0.1em}
-\setlist[itemize]{noitemsep, topsep=0pt, leftmargin=1.2em, parsep=0pt}
+\titlespacing*{\section}{0pt}{0.3em}{0.1em}
+\titlespacing*{\subsection}{0pt}{0.2em}{0.05em}
+\setlist[itemize]{noitemsep, topsep=0pt, leftmargin=1em, parsep=0pt}
 
 % Colors
 \definecolor{primary}{RGB}{44, 82, 130}
@@ -27,91 +26,95 @@
 \pagestyle{fancy}
 \fancyhf{}
 \fancyhead[L]{\textcolor{secondary}{\scriptsize Enterprise Onboarding Agent}}
-\fancyhead[R]{\textcolor{secondary}{\scriptsize Solution Design Document}}
+\fancyhead[R]{\textcolor{secondary}{\scriptsize Solution Design}}
 \fancyfoot[C]{\scriptsize\thepage}
 \renewcommand{\headrulewidth}{0.3pt}
 
 % Section formatting
-\titleformat{\section}{\normalsize\bfseries\color{primary}}{\thesection.}{0.4em}{}
+\titleformat{\section}{\normalsize\bfseries\color{primary}}{\thesection.}{0.3em}{}
 \titleformat{\subsection}{\small\bfseries\color{primary}}{\thesubsection}{0.3em}{}
 
 % Smaller captions
 \usepackage[font=scriptsize,labelfont=bf]{caption}
-\captionsetup{skip=2pt}
+\captionsetup{skip=1pt}
 
 \begin{document}
 
 % Title
 \begin{center}
-{\large\bfseries\color{primary} Enterprise Customer Onboarding Agent}\\[0.1em]
-{\small Solution Design Document | February 2025 | StackAdapt Case Study}
+{\large\bfseries\color{primary} Enterprise Customer Onboarding Agent --- Solution Design Document}\\[0.05em]
+{\small February 2025 | StackAdapt Case Study Submission}
 \end{center}
-
-\vspace{0.1em}
 
 %==============================================================================
 % SECTION A: ARCHITECTURE
 %==============================================================================
 \section{Architecture Overview}
 
-The solution implements an \textbf{AI-powered automation agent} using \textbf{LangGraph} for state machine orchestration and \textbf{FastAPI} for REST interface, automating customer onboarding from deal closure through SaaS provisioning.
+The solution implements an \textbf{AI-powered automation agent} that orchestrates enterprise customer onboarding from deal closure through SaaS provisioning. Built with \textbf{LangGraph} for state machine orchestration and \textbf{FastAPI} for the REST interface, the agent integrates with multiple enterprise systems, validates business rules, assesses risks using LLM intelligence, and takes autonomous actions including tenant provisioning and task management.
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.85\textwidth]{01_architecture.png}
-\caption{Architecture: Triggers → LangGraph Agent (Init→Fetch→Validate→Analyze→Decide) → Actions}
-\end{figure}
+\vspace{0.2em}
+\begin{minipage}[t]{0.58\textwidth}
+\vspace{0pt}
+\subsection{System Integrations}
+The agent connects to enterprise systems via REST APIs. Field selection focused on business-critical data to minimize payload and optimize validation:
 
-\vspace{-0.8em}
-\subsection{System Integrations \& Field Selection}
-
-\vspace{-0.3em}
+\vspace{0.1em}
 \begin{table}[H]
 \scriptsize
-\begin{tabularx}{\textwidth}{@{}lXl@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{System} & \textbf{Objects \& Key Fields} & \textbf{Reference} \\
+\textbf{System} & \textbf{Objects \& Key Fields} \\
 \midrule
-\textbf{Salesforce} & \texttt{Account} (IsDeleted, Status), \texttt{Opportunity} (StageName, Amount), \texttt{User} (IsActive) & \href{https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_list.htm}{SF Objects} \\
-\textbf{NetSuite} & \texttt{Invoice} (status, dueDate, amountRemaining, paymentStatus) & \href{https://system.netsuite.com/help/helpcenter/en_US/APIs/REST_API_Browser/record/v1/2023.1/index.html}{NS REST API} \\
-\textbf{CLM} & Contract status, signatories, effective dates (Mock API) & Custom \\
-\textbf{Provisioning} & Tenant creation + 14-task onboarding checklist with dependencies & Internal \\
+\textbf{Salesforce CRM} & \texttt{Account} (Id, Name, IsDeleted, Status, BillingCountry), \texttt{Opportunity} (StageName, Amount, CloseDate), \texttt{User} (IsActive, Email). \href{https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_list.htm}{\textcolor{blue}{[API Ref]}} \\
+\textbf{NetSuite ERP} & \texttt{Invoice} (status, dueDate, amountRemaining, paymentStatus). Used for payment verification before provisioning. \href{https://system.netsuite.com/help/helpcenter/en_US/APIs/REST_API_Browser/record/v1/2023.1/index.html}{\textcolor{blue}{[API Ref]}} \\
+\textbf{CLM System} & Contract status, signatories, effective dates, key terms. Mock implementation simulating DocuSign CLM. \\
+\textbf{Provisioning} & Internal system for tenant creation + 14-task onboarding checklist with dependencies and due dates. \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\vspace{-0.6em}
-{\footnotesize\textbf{Why these fields?} Only business-critical fields: \texttt{Account.IsDeleted} for validity, \texttt{Opportunity.StageName="Closed Won"} for deal verification, \texttt{Invoice.status} for payment issues. Minimizes API payload and focuses on decision-relevant data.}
+\vspace{-0.2em}
+{\scriptsize\textbf{Field Selection Rationale:} \texttt{Account.IsDeleted} validates account exists; \texttt{Opportunity.StageName="Closed Won"} confirms deal closure; \texttt{Invoice.status} identifies payment blockers. This minimizes API calls while capturing decision-critical data.}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.40\textwidth}
+\vspace{0pt}
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth,height=10cm,keepaspectratio]{01_architecture.png}
+\caption{High-level architecture showing trigger sources, LangGraph orchestration, and integration layer.}
+\end{figure}
+\end{minipage}
 
 %==============================================================================
 % SECTION B: AI AGENT APPLICATION
 %==============================================================================
 \section{AI Agent Application}
 
-\vspace{-0.2em}
-\begin{minipage}[t]{0.54\textwidth}
-\vspace{0pt}
-The agent uses \textbf{OpenAI GPT-4} with a deterministic rule-based fallback ensuring availability without LLM connectivity.
+The agent leverages \textbf{OpenAI GPT-4} for intelligent analysis with a deterministic rule-based fallback, ensuring the system operates even without LLM connectivity. This dual-mode approach balances intelligence with reliability.
 
-\vspace{0.2em}
-\textbf{LLM-Powered Intelligence:}
+\vspace{0.1em}
+\begin{minipage}[t]{0.56\textwidth}
+\vspace{0pt}
+\subsection{LLM-Powered Intelligence}
 \begin{itemize}
-\item \textbf{Risk Analysis}: API errors, violations, warnings → risk level (low/medium/high/critical)
-\item \textbf{Summary Generation}: Human-readable reports for CS teams
-\item \textbf{Action Recommendations}: Prioritized steps with owner assignment
-\item \textbf{Error Interpretation}: \texttt{INVALID\_SESSION\_ID} → plain English
+\item \textbf{Risk Analysis}: Evaluates API errors, business rule violations, and warnings to generate risk levels (low/medium/high/critical) with business impact assessment and estimated resolution time.
+\item \textbf{Summary Generation}: Creates human-readable status reports for Customer Success teams, translating technical states into actionable insights.
+\item \textbf{Action Recommendations}: Produces prioritized remediation steps with owner assignment (CS, Finance, IT, Legal) based on issue type and urgency.
+\item \textbf{Error Interpretation}: Converts technical API error codes (e.g., \texttt{INVALID\_SESSION\_ID}, \texttt{INSUFFICIENT\_ACCESS}) into plain-English explanations with specific resolution steps.
 \end{itemize}
 
-\vspace{0.2em}
-\textbf{Autonomous Actions:} Auto-provisions tenant • Creates 14-task checklist • Sends Slack + email • Records API failures → BLOCK
+\subsection{Autonomous Actions}
+Upon decision, the agent executes: \textbf{(1)} Auto-provisions tenant with tier-appropriate configuration; \textbf{(2)} Creates 14-task onboarding checklist with dependencies, owners, and due dates; \textbf{(3)} Sends Slack alerts to \texttt{\#cs-onboarding} channel; \textbf{(4)} Emails welcome message with login credentials to customer; \textbf{(5)} Records all API failures with full context for audit.
 \end{minipage}
 \hfill
-\begin{minipage}[t]{0.44\textwidth}
+\begin{minipage}[t]{0.42\textwidth}
 \vspace{0pt}
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{02_decision.png}
-\caption{Decision Priority Flow}
+\includegraphics[width=\textwidth,height=8cm,keepaspectratio]{02_decision.png}
+\caption{Decision logic: API Errors → BLOCK, Violations → BLOCK, Warnings → ESCALATE, Clear → PROCEED.}
 \end{figure}
 \end{minipage}
 
@@ -120,96 +123,112 @@ The agent uses \textbf{OpenAI GPT-4} with a deterministic rule-based fallback en
 %==============================================================================
 \section{Orchestration \& Event-Driven Flows}
 
-\vspace{-0.3em}
+The agent supports multiple trigger mechanisms for different operational needs. LangGraph manages state transitions through a defined workflow with full observability via structured logging and optional LangSmith tracing.
+
+\vspace{0.1em}
+\begin{minipage}[t]{0.52\textwidth}
+\vspace{0pt}
 \begin{table}[H]
 \scriptsize
-\begin{tabularx}{\textwidth}{@{}llXl@{}}
+\begin{tabularx}{\textwidth}{@{}llX@{}}
 \toprule
-\textbf{Trigger} & \textbf{Source} & \textbf{Use Case} & \textbf{Endpoint} \\
+\textbf{Trigger} & \textbf{Source} & \textbf{Endpoint} \\
 \midrule
-Webhook & Salesforce & Opportunity → ``Closed Won'' & \texttt{POST /webhook/onboarding} \\
-Manual & CS Team & On-demand for specific account & \texttt{POST /demo/run/\{id\}} \\
-Batch & Scheduler & Overnight processing & \texttt{POST /demo/run-all} \\
-Task & CS Action & Mark task complete & \texttt{PUT /demo/tasks/\{id\}/\{task\}} \\
+Webhook & Salesforce Flow & \texttt{POST /webhook/onboarding} \\
+Manual & CS Team & \texttt{POST /demo/run/\{account\_id\}} \\
+Batch & Scheduler/Cron & \texttt{POST /demo/run-all} \\
+Task Update & CS Action & \texttt{PUT /demo/tasks/\{id\}/\{task\}} \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\vspace{-0.5em}
-{\footnotesize\textbf{State Machine}: LangGraph manages: Init → Fetch(SF/CLM/NS) → Validate → Analyze → Decide → [Provision] → Notify → Complete. Conditional routing based on \texttt{api\_errors}, \texttt{violations}, \texttt{warnings}. \textbf{Error Simulation}: \texttt{/demo/enable-random-errors} injects configurable failures (401/400/429/500) for resilience testing.}
+\vspace{-0.2em}
+{\scriptsize\textbf{State Machine Flow}: Initialize → Fetch Salesforce → Fetch CLM → Fetch NetSuite → Validate Invariants → Analyze Risks (LLM) → Make Decision → [Provision if PROCEED] → Send Notifications → Generate Summary → Complete. Each node handles errors gracefully and updates state.}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.46\textwidth}
+\vspace{0pt}
+{\scriptsize\textbf{Error Simulation for Resilience Testing}: The endpoint \texttt{/demo/enable-random-errors} injects configurable failures with adjustable rates:
+\begin{itemize}
+\item Authentication errors (HTTP 401) - expired tokens
+\item Validation errors (HTTP 400) - malformed data
+\item Rate limit errors (HTTP 429) - API throttling
+\item Server errors (HTTP 500) - backend failures
+\end{itemize}
+This enables chaos testing without modifying business logic, validating the agent's error handling and recovery capabilities.}
+\end{minipage}
 
 %==============================================================================
 % SECTION D: TRADE-OFFS
 %==============================================================================
 \section{Trade-offs, Assumptions \& Considerations}
 
-\vspace{-0.2em}
-\begin{minipage}[t]{0.52\textwidth}
+\begin{minipage}[t]{0.48\textwidth}
 \vspace{0pt}
+\subsection{Design Decisions}
 \begin{table}[H]
 \scriptsize
 \begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
 \textbf{Decision} & \textbf{Rationale} \\
 \midrule
-API Errors → BLOCK & Data integrity over speed \\
-Sync Processing & Simple for demo; prod uses queues \\
-Rule-based Fallback & Works without LLM connectivity \\
-14 Fixed Tasks & Predictable; prod uses templates \\
+API Errors → BLOCK & Data integrity over speed; cannot provision with incomplete data \\
+Synchronous Processing & Simplicity for demo; production would use message queues (SQS/RabbitMQ) \\
+Rule-based Fallback & Ensures availability without LLM; deterministic behavior for testing \\
+14 Fixed Tasks & Predictable workflow; production would use configurable templates \\
 \bottomrule
 \end{tabularx}
 \end{table}
 \end{minipage}
 \hfill
-\begin{minipage}[t]{0.46\textwidth}
+\begin{minipage}[t]{0.50\textwidth}
 \vspace{0pt}
-{\footnotesize
-\textbf{Scalability}: Sync → SQS/RabbitMQ, Memory → Redis, Single → K8s, + LLM caching
+\subsection{Scalability \& Security}
+{\scriptsize\textbf{Scalability Path}: Current demo uses synchronous processing with in-memory state. Production deployment would include: message queues for async processing, Redis for distributed state, Kubernetes for horizontal scaling, and LLM response caching for cost optimization.
 
-\textbf{Security}: OAuth 2.0 with token refresh, audit trails with correlation IDs, PII masking in logs, RBAC for API operations}
+\textbf{Security \& Governance}: OAuth 2.0 with token refresh simulation, structured audit trails with correlation IDs across all operations, PII masking in logs, role-based access control (RBAC) for API operations, and complete state snapshots for compliance.}
 \end{minipage}
 
 %==============================================================================
 % SECTION E: MCP COLLABORATION
 %==============================================================================
-\section{Multi-Agent Collaboration via MCP}
+\section{Multi-Agent Collaboration via Model Context Protocol (MCP)}
 
-\vspace{-0.2em}
-\begin{minipage}[t]{0.52\textwidth}
+\begin{minipage}[t]{0.54\textwidth}
 \vspace{0pt}
-{\footnotesize The \textbf{Model Context Protocol (MCP)} enables specialized agents to collaborate through standardized tool interfaces:}
+The architecture supports multi-agent collaboration through MCP, enabling specialized agents to communicate via standardized tool interfaces. Each agent is a domain expert with focused responsibilities.
 
 \vspace{0.1em}
 \begin{table}[H]
 \scriptsize
 \begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Agent} & \textbf{Responsibility \& Tools} \\
+\textbf{Agent} & \textbf{Responsibility \& MCP Tools} \\
 \midrule
-Coordinator & Orchestrates workflow (\texttt{salesforce.*}, \texttt{provision.*}) \\
-Contract & Monitors signatures (\texttt{clm.get\_contract}) \\
-Finance & Tracks payments (\texttt{netsuite.get\_invoice}) \\
-Task Monitor & Overdue detection (\texttt{tasks.get\_overdue}) \\
+Coordinator & Orchestrates end-to-end workflow (\texttt{salesforce.*}, \texttt{provision.*}, \texttt{tasks.*}) \\
+Contract Agent & Monitors signature status, sends reminders (\texttt{clm.get\_contract}, \texttt{clm.send\_reminder}) \\
+Finance Agent & Tracks payments, initiates dunning (\texttt{netsuite.get\_invoice}, \texttt{netsuite.send\_dunning}) \\
+Task Monitor & Detects overdue tasks, alerts CS (\texttt{tasks.get\_overdue}, \texttt{notify.alert}) \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\vspace{-0.3em}
-{\footnotesize\textbf{Benefits}: Domain expert agents • Shared MCP servers • Add agents without modifying existing • Cross-agent context via tool responses}
+\vspace{-0.2em}
+{\scriptsize\textbf{Benefits}: Separation of concerns (domain experts) • Reusable integrations (shared MCP servers) • Scalable complexity (add agents without modifying existing) • Cross-agent context sharing via tool responses.}
 \end{minipage}
 \hfill
-\begin{minipage}[t]{0.46\textwidth}
+\begin{minipage}[t]{0.44\textwidth}
 \vspace{0pt}
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{03_mcp_architecture.png}
-\caption{MCP: Agents → Router → Servers → APIs}
+\includegraphics[width=\textwidth,height=8cm,keepaspectratio]{03_mcp_architecture.png}
+\caption{MCP architecture: Specialized agents collaborate through shared MCP servers wrapping external APIs.}
 \end{figure}
 \end{minipage}
 
 \vfill
 \begin{center}
-\textcolor{secondary}{\scriptsize Enterprise Onboarding Agent | StackAdapt Case Study | GitHub: See attached code}
+\textcolor{secondary}{\scriptsize Enterprise Onboarding Agent | StackAdapt Case Study | Full source code and documentation available in attached repository}
 \end{center}
 
 \end{document}
