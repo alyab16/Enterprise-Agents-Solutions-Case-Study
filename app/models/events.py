@@ -37,8 +37,9 @@ class OnboardingResponse(BaseModel):
     warnings: Dict[str, List[str]] = Field(default_factory=dict)
     actions_taken: List[Dict[str, Any]] = Field(default_factory=list)
     notifications_sent: List[Dict[str, Any]] = Field(default_factory=list)
-    recommended_actions: List[str] = Field(default_factory=list)
+    recommended_actions: List[Any] = Field(default_factory=list)  # Can be strings or dicts from LLM
     provisioning: Optional[Dict[str, Any]] = None
+    generated_reports: Optional[Dict[str, str]] = None  # paths to generated report files
 
 
 class DebugPayload(BaseModel):

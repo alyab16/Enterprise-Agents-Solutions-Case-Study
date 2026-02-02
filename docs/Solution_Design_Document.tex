@@ -1,5 +1,5 @@
 \documentclass[9pt,a4paper]{article}
-\usepackage[margin=0.55in,top=0.5in,bottom=0.5in]{geometry}
+\usepackage[margin=0.5in,top=0.45in,bottom=0.45in]{geometry}
 \usepackage{titlesec}
 \usepackage{enumitem}
 \usepackage{hyperref}
@@ -10,13 +10,14 @@
 \usepackage{graphicx}
 \usepackage{float}
 \usepackage{multicol}
+\usepackage{wrapfig}
 
 % Tight spacing
-\setlength{\parskip}{0.2em}
+\setlength{\parskip}{0.15em}
 \setlength{\parindent}{0pt}
-\titlespacing*{\section}{0pt}{0.5em}{0.2em}
-\titlespacing*{\subsection}{0pt}{0.3em}{0.1em}
-\setlist[itemize]{noitemsep, topsep=1pt, leftmargin=1.2em, parsep=0pt}
+\titlespacing*{\section}{0pt}{0.4em}{0.15em}
+\titlespacing*{\subsection}{0pt}{0.25em}{0.1em}
+\setlist[itemize]{noitemsep, topsep=0pt, leftmargin=1.2em, parsep=0pt}
 
 % Colors
 \definecolor{primary}{RGB}{44, 82, 130}
@@ -25,24 +26,28 @@
 % Header/Footer
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\textcolor{secondary}{\footnotesize Enterprise Onboarding Agent}}
-\fancyhead[R]{\textcolor{secondary}{\footnotesize Solution Design Document}}
-\fancyfoot[C]{\footnotesize\thepage}
-\renewcommand{\headrulewidth}{0.4pt}
+\fancyhead[L]{\textcolor{secondary}{\scriptsize Enterprise Onboarding Agent}}
+\fancyhead[R]{\textcolor{secondary}{\scriptsize Solution Design Document}}
+\fancyfoot[C]{\scriptsize\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
 
 % Section formatting
 \titleformat{\section}{\normalsize\bfseries\color{primary}}{\thesection.}{0.4em}{}
-\titleformat{\subsection}{\small\bfseries\color{primary}}{\thesubsection}{0.4em}{}
+\titleformat{\subsection}{\small\bfseries\color{primary}}{\thesubsection}{0.3em}{}
+
+% Smaller captions
+\usepackage[font=scriptsize,labelfont=bf]{caption}
+\captionsetup{skip=2pt}
 
 \begin{document}
 
 % Title
 \begin{center}
-{\Large\bfseries\color{primary} Enterprise Customer Onboarding Agent}\\[0.15em]
-{\normalsize Solution Design Document | February 2025 | StackAdapt Case Study}
+{\large\bfseries\color{primary} Enterprise Customer Onboarding Agent}\\[0.1em]
+{\small Solution Design Document | February 2025 | StackAdapt Case Study}
 \end{center}
 
-\vspace{0.2em}
+\vspace{0.1em}
 
 %==============================================================================
 % SECTION A: ARCHITECTURE
@@ -51,19 +56,18 @@
 
 The solution implements an \textbf{AI-powered automation agent} using \textbf{LangGraph} for state machine orchestration and \textbf{FastAPI} for REST interface, automating customer onboarding from deal closure through SaaS provisioning.
 
-% IMAGE PLACEHOLDER
 \begin{figure}[H]
 \centering
-%\fbox{\parbox{0.95\textwidth}{\centering\vspace{1.2cm}\textbf{[INSERT: 01\_architecture.mmd]} - Render mermaid diagram as PNG\vspace{1.2cm}}}
-\includegraphics[width=0.95\textwidth]{01_architecture.png}
+\includegraphics[width=0.85\textwidth]{01_architecture.png}
 \caption{Architecture: Triggers → LangGraph Agent (Init→Fetch→Validate→Analyze→Decide) → Actions}
 \end{figure}
 
-\vspace{-0.5em}
+\vspace{-0.8em}
 \subsection{System Integrations \& Field Selection}
 
+\vspace{-0.3em}
 \begin{table}[H]
-\footnotesize
+\scriptsize
 \begin{tabularx}{\textwidth}{@{}lXl@{}}
 \toprule
 \textbf{System} & \textbf{Objects \& Key Fields} & \textbf{Reference} \\
@@ -76,38 +80,38 @@ The solution implements an \textbf{AI-powered automation agent} using \textbf{La
 \end{tabularx}
 \end{table}
 
-\vspace{-0.5em}
-\textbf{Why these fields?} Only business-critical fields selected: \texttt{Account.IsDeleted} for validity, \texttt{Opportunity.StageName="Closed Won"} for deal verification, \texttt{Invoice.status} for payment issues. Minimizes API payload and focuses on decision-relevant data.
+\vspace{-0.6em}
+{\footnotesize\textbf{Why these fields?} Only business-critical fields: \texttt{Account.IsDeleted} for validity, \texttt{Opportunity.StageName="Closed Won"} for deal verification, \texttt{Invoice.status} for payment issues. Minimizes API payload and focuses on decision-relevant data.}
 
 %==============================================================================
 % SECTION B: AI AGENT APPLICATION
 %==============================================================================
 \section{AI Agent Application}
 
+\vspace{-0.2em}
+\begin{minipage}[t]{0.54\textwidth}
+\vspace{0pt}
 The agent uses \textbf{OpenAI GPT-4} with a deterministic rule-based fallback ensuring availability without LLM connectivity.
 
-\begin{minipage}[t]{0.52\textwidth}
-\vspace{0pt}
-\subsection{LLM-Powered Intelligence}
+\vspace{0.2em}
+\textbf{LLM-Powered Intelligence:}
 \begin{itemize}
-\item \textbf{Risk Analysis}: Evaluates API errors, violations, warnings → generates risk level (low/medium/high/critical) with business impact
+\item \textbf{Risk Analysis}: API errors, violations, warnings → risk level (low/medium/high/critical)
 \item \textbf{Summary Generation}: Human-readable reports for CS teams
-\item \textbf{Action Recommendations}: Prioritized steps with owner assignment (CS, Finance, IT) and resolution timelines
-\item \textbf{Error Interpretation}: Translates \texttt{INVALID\_SESSION\_ID} → plain English fix instructions
+\item \textbf{Action Recommendations}: Prioritized steps with owner assignment
+\item \textbf{Error Interpretation}: \texttt{INVALID\_SESSION\_ID} → plain English
 \end{itemize}
 
-\subsection{Autonomous Actions}
-Auto-provisions tenant (tier-appropriate config) • Creates 14-task onboarding checklist • Sends Slack alerts + welcome emails • Records API failures → influences BLOCK decisions
+\vspace{0.2em}
+\textbf{Autonomous Actions:} Auto-provisions tenant • Creates 14-task checklist • Sends Slack + email • Records API failures → BLOCK
 \end{minipage}
 \hfill
-\begin{minipage}[t]{0.45\textwidth}
+\begin{minipage}[t]{0.44\textwidth}
 \vspace{0pt}
 \begin{figure}[H]
 \centering
-%\fbox{\parbox{0.95\textwidth}{\centering\vspace{1cm}\textbf{[INSERT: 02\_decision\_flow.mmd]}\vspace{1cm}}}
-\includegraphics[width=0.95\textwidth]{02_decision.png}
-
-\caption{Decision Logic: API Errors → Violations → Warnings → Proceed}
+\includegraphics[width=\textwidth]{02_decision.png}
+\caption{Decision Priority Flow}
 \end{figure}
 \end{minipage}
 
@@ -116,10 +120,9 @@ Auto-provisions tenant (tier-appropriate config) • Creates 14-task onboarding 
 %==============================================================================
 \section{Orchestration \& Event-Driven Flows}
 
-\subsection{Triggers \& State Machine}
-
+\vspace{-0.3em}
 \begin{table}[H]
-\footnotesize
+\scriptsize
 \begin{tabularx}{\textwidth}{@{}llXl@{}}
 \toprule
 \textbf{Trigger} & \textbf{Source} & \textbf{Use Case} & \textbf{Endpoint} \\
@@ -132,21 +135,19 @@ Task & CS Action & Mark task complete & \texttt{PUT /demo/tasks/\{id\}/\{task\}}
 \end{tabularx}
 \end{table}
 
-\vspace{-0.3em}
-\textbf{State Machine}: LangGraph manages transitions: Init → Fetch(SF/CLM/NS) → Validate → Analyze → Decide → [Provision] → Notify → Complete. Each node handles errors gracefully, returning updated state. Conditional routing based on \texttt{api\_errors}, \texttt{violations}, \texttt{warnings}.
-
-\textbf{Error Simulation}: \texttt{/demo/enable-random-errors} injects configurable failures (401 auth, 400 validation, 429 rate limit, 500 server) for resilience testing.
+\vspace{-0.5em}
+{\footnotesize\textbf{State Machine}: LangGraph manages: Init → Fetch(SF/CLM/NS) → Validate → Analyze → Decide → [Provision] → Notify → Complete. Conditional routing based on \texttt{api\_errors}, \texttt{violations}, \texttt{warnings}. \textbf{Error Simulation}: \texttt{/demo/enable-random-errors} injects configurable failures (401/400/429/500) for resilience testing.}
 
 %==============================================================================
 % SECTION D: TRADE-OFFS
 %==============================================================================
 \section{Trade-offs, Assumptions \& Considerations}
 
-\begin{minipage}[t]{0.55\textwidth}
+\vspace{-0.2em}
+\begin{minipage}[t]{0.52\textwidth}
 \vspace{0pt}
-\subsection{Design Decisions}
 \begin{table}[H]
-\footnotesize
+\scriptsize
 \begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
 \textbf{Decision} & \textbf{Rationale} \\
@@ -160,12 +161,12 @@ Rule-based Fallback & Works without LLM connectivity \\
 \end{table}
 \end{minipage}
 \hfill
-\begin{minipage}[t]{0.42\textwidth}
+\begin{minipage}[t]{0.46\textwidth}
 \vspace{0pt}
-\subsection{Scalability \& Security}
+{\footnotesize
 \textbf{Scalability}: Sync → SQS/RabbitMQ, Memory → Redis, Single → K8s, + LLM caching
 
-\textbf{Security}: OAuth 2.0 with token refresh, audit trails with correlation IDs, PII masking in logs, RBAC for API operations
+\textbf{Security}: OAuth 2.0 with token refresh, audit trails with correlation IDs, PII masking in logs, RBAC for API operations}
 \end{minipage}
 
 %==============================================================================
@@ -173,12 +174,14 @@ Rule-based Fallback & Works without LLM connectivity \\
 %==============================================================================
 \section{Multi-Agent Collaboration via MCP}
 
+\vspace{-0.2em}
 \begin{minipage}[t]{0.52\textwidth}
 \vspace{0pt}
-The \textbf{Model Context Protocol (MCP)} enables specialized agents to collaborate through standardized tool interfaces:
+{\footnotesize The \textbf{Model Context Protocol (MCP)} enables specialized agents to collaborate through standardized tool interfaces:}
 
+\vspace{0.1em}
 \begin{table}[H]
-\footnotesize
+\scriptsize
 \begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
 \textbf{Agent} & \textbf{Responsibility \& Tools} \\
@@ -191,22 +194,22 @@ Task Monitor & Overdue detection (\texttt{tasks.get\_overdue}) \\
 \end{tabularx}
 \end{table}
 
-\textbf{Benefits}: Domain expert agents • Shared MCP servers reduce duplication • Add agents without modifying existing • Cross-agent context via tool responses
+\vspace{-0.3em}
+{\footnotesize\textbf{Benefits}: Domain expert agents • Shared MCP servers • Add agents without modifying existing • Cross-agent context via tool responses}
 \end{minipage}
 \hfill
-\begin{minipage}[t]{0.45\textwidth}
+\begin{minipage}[t]{0.46\textwidth}
 \vspace{0pt}
 \begin{figure}[H]
 \centering
-%\fbox{\parbox{0.95\textwidth}{\centering\vspace{1cm}\textbf{[INSERT: 03\_mcp\_architecture.mmd]}\vspace{1cm}}}
-\includegraphics[width=0.95\textwidth]{03_mcp_architecture.png}
+\includegraphics[width=\textwidth]{03_mcp_architecture.png}
 \caption{MCP: Agents → Router → Servers → APIs}
 \end{figure}
 \end{minipage}
 
 \vfill
 \begin{center}
-\textcolor{secondary}{\footnotesize Enterprise Onboarding Agent | StackAdapt Case Study | GitHub: See attached code}
+\textcolor{secondary}{\scriptsize Enterprise Onboarding Agent | StackAdapt Case Study | GitHub: See attached code}
 \end{center}
 
 \end{document}
