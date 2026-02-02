@@ -239,7 +239,7 @@ def _rule_based_analyze(state: dict) -> dict:
         })
     
     if "invoice" in warnings:
-        invoice = state.get("invoice", {})
+        invoice = state.get("invoice") or {}
         if invoice.get("status") == "OVERDUE":
             risks.append({
                 "issue": "Invoice is overdue",
@@ -254,8 +254,8 @@ def _rule_based_analyze(state: dict) -> dict:
             })
     
     if "contract" in warnings:
-        contract = state.get("contract", {})
-        if contract.get("Status") == "Draft":
+        contract = state.get("contract") or state.get("clm") or {}
+        if contract.get("Status") == "Draft" or contract.get("status") == "DRAFT":
             risks.append({
                 "issue": "Contract still in draft status",
                 "impact": "Contract not yet sent for signature",
@@ -313,7 +313,7 @@ def _rule_based_analyze(state: dict) -> dict:
         priority += 1
     
     if "invoice" in warnings:
-        invoice = state.get("invoice", {})
+        invoice = state.get("invoice") or {}
         if invoice.get("status") in ["OVERDUE", "PENDING"]:
             recommended_actions.append({
                 "action": "Follow up on invoice payment status",
