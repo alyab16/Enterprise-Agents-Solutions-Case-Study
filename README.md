@@ -139,13 +139,9 @@ stateDiagram-v2
 # Install uv if you don't have it
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Navigate to project
-cd onboarding-agent
-
 # Create virtual environment and install dependencies
-uv venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-uv pip install -r requirements.txt
+uv init
+uv add -r requirements.txt
 
 # Set up environment
 cp .env.example .env
