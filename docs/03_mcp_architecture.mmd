@@ -1,0 +1,47 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#cce5ff', 'primaryBorderColor': '#2c5282' }}}%%
+flowchart TB
+    subgraph Agents["🤖 SPECIALIZED AI AGENTS"]
+        direction LR
+        COORD["Onboarding<br/>Coordinator<br/><i>Orchestrates workflow</i>"]
+        CONTRACT["Contract<br/>Agent<br/><i>Monitors signatures</i>"]
+        FINANCE["Finance<br/>Agent<br/><i>Tracks payments</i>"]
+        TASK["Task Monitor<br/>Agent<br/><i>Overdue detection</i>"]
+    end
+
+    subgraph MCP["🔀 MCP TOOL ROUTER"]
+        ROUTER{{"Route Tool<br/>Calls"}}
+    end
+
+    subgraph Servers["🔧 MCP SERVERS"]
+        direction LR
+        SF_MCP["Salesforce<br/>MCP Server<br/><code>salesforce.*</code>"]
+        CLM_MCP["CLM<br/>MCP Server<br/><code>clm.*</code>"]
+        NS_MCP["NetSuite<br/>MCP Server<br/><code>netsuite.*</code>"]
+        TASK_MCP["Task<br/>MCP Server<br/><code>tasks.*</code>"]
+    end
+
+    subgraph APIs["🌐 EXTERNAL APIs"]
+        direction LR
+        SF_API[("Salesforce<br/>REST API")]
+        CLM_API[("CLM<br/>REST API")]
+        NS_API[("NetSuite<br/>REST API")]
+    end
+
+    COORD <-->|"get_account<br/>get_opportunity"| ROUTER
+    CONTRACT <-->|"get_contract<br/>send_reminder"| ROUTER
+    FINANCE <-->|"get_invoice<br/>send_dunning"| ROUTER
+    TASK <-->|"get_overdue<br/>update_status"| ROUTER
+
+    ROUTER <--> SF_MCP
+    ROUTER <--> CLM_MCP
+    ROUTER <--> NS_MCP
+    ROUTER <--> TASK_MCP
+
+    SF_MCP <-->|"OAuth 2.0"| SF_API
+    CLM_MCP <-->|"Bearer Token"| CLM_API
+    NS_MCP <-->|"Token Auth"| NS_API
+
+    style Agents fill:#e8f4fd,stroke:#2c5282
+    style MCP fill:#f0f0f0,stroke:#666
+    style Servers fill:#fff3cd,stroke:#cc9900
+    style APIs fill:#d4edda,stroke:#28a745

@@ -1,0 +1,76 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#cce5ff', 'primaryBorderColor': '#2c5282', 'secondaryColor': '#f0f0f0', 'tertiaryColor': '#fff' }}}%%
+flowchart TB
+    subgraph Triggers["🔔 TRIGGER LAYER"]
+        direction LR
+        SF_WH["Salesforce<br/>Webhook"]
+        API["REST API<br/>Manual"]
+        CRON["Scheduled<br/>Cron Job"]
+    end
+
+    subgraph Agent["🤖 LANGGRAPH AGENT ORCHESTRATION"]
+        direction TB
+        INIT["Initialize<br/>State"]
+        
+        subgraph Fetch["Data Collection"]
+            FETCH_SF["Fetch Salesforce<br/>Account/Opportunity/User"]
+            FETCH_CLM["Fetch CLM<br/>Contract/Signatories"]
+            FETCH_NS["Fetch NetSuite<br/>Invoice/Payment"]
+        end
+        
+        VALIDATE["Validate<br/>Invariants"]
+        ANALYZE["Analyze Risks<br/>LLM + Fallback"]
+        DECIDE{{"Decision<br/>Router"}}
+    end
+
+    subgraph Outcomes["📋 DECISION OUTCOMES"]
+        BLOCK["🚫 BLOCK<br/>API Errors or Violations"]
+        ESCALATE["⚠️ ESCALATE<br/>Warnings Only"]
+        PROCEED["✅ PROCEED<br/>All Clear"]
+    end
+
+    subgraph Actions["⚡ ACTIONS"]
+        PROVISION["Provision Tenant<br/>+ Create 14 Tasks"]
+        NOTIFY["Send Notifications<br/>Slack + Email"]
+        REPORT["Generate Reports<br/>HTML/MD/JSON"]
+    end
+
+    subgraph Integrations["🔌 EXTERNAL INTEGRATIONS"]
+        CRM[("Salesforce<br/>CRM")]
+        CLM_DB[("CLM<br/>Contracts")]
+        ERP[("NetSuite<br/>ERP")]
+        SLACK["Slack"]
+        EMAIL["Email"]
+    end
+
+    SF_WH --> INIT
+    API --> INIT
+    CRON --> INIT
+    
+    INIT --> FETCH_SF
+    FETCH_SF --> FETCH_CLM
+    FETCH_CLM --> FETCH_NS
+    FETCH_NS --> VALIDATE
+    VALIDATE --> ANALYZE
+    ANALYZE --> DECIDE
+    
+    FETCH_SF <-.->|REST API| CRM
+    FETCH_CLM <-.->|REST API| CLM_DB
+    FETCH_NS <-.->|REST API| ERP
+    
+    DECIDE -->|"api_errors > 0<br/>OR violations > 0"| BLOCK
+    DECIDE -->|"warnings > 0"| ESCALATE
+    DECIDE -->|"all clear"| PROCEED
+    
+    BLOCK --> NOTIFY
+    ESCALATE --> NOTIFY
+    PROCEED --> PROVISION
+    PROVISION --> NOTIFY
+    NOTIFY --> REPORT
+    
+    NOTIFY <-.-> SLACK
+    NOTIFY <-.-> EMAIL
+
+    style BLOCK fill:#ffcccc,stroke:#cc0000
+    style ESCALATE fill:#fff3cd,stroke:#cc9900
+    style PROCEED fill:#d4edda,stroke:#28a745
+    style Agent fill:#e8f4fd,stroke:#2c5282

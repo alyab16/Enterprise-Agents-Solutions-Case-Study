@@ -216,3 +216,8 @@ __marimo__/
 .streamlit/secrets.toml
 gather_everything.py
 app_python_code_dump.txt
+docs/Solution_Design_Document.aux
+docs/Solution_Design_Document.fdb_latexmk
+docs/Solution_Design_Document.fls
+docs/Solution_Design_Document.out
+docs/Solution_Design_Document.synctex.gz
