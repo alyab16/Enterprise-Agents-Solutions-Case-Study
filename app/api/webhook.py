@@ -247,38 +247,69 @@ async def debug_onboarding(payload: DebugPayload):
     WITHOUT calling the real integration mocks. You provide the exact
     data you want to test, and it runs the checks on that data.
     
+    IMPORTANT: This endpoint mimics production behavior exactly. You must
+    provide complete, valid data structures matching what the real APIs
+    would return. Missing required fields (like Id, AccountId) will cause
+    violations just like in production.
+    
     USE CASES:
     ----------
     - Testing edge cases that aren't in the mock data
     - Debugging specific validation rules
-    - Unit testing the invariant checks
+    - Verifying invariant checks work correctly
     
-    EXAMPLE REQUEST:
-    ----------------
+    EXAMPLE REQUEST (complete data for ESCALATE test):
+    --------------------------------------------------
     POST /debug/onboarding
     {
-        "account": {"Name": "Test Corp", "IsDeleted": true},
-        "opportunity": {"StageName": "Closed Won", "Amount": 50000}
-    }
-    
-    EXAMPLE RESPONSE:
-    -----------------
-    {
-        "decision": "BLOCK",
-        "violations": {"account": ["Account is marked as deleted"]},
-        "warnings": {},
-        "risk_analysis": {...}
+        "account": {
+            "Id": "001ABC123",
+            "Name": "Test Corp",
+            "IsDeleted": false,
+            "BillingCountry": "US",
+            "Industry": "Tech",
+            "OwnerId": "005XYZ"
+        },
+        "user": {
+            "Id": "005XYZ",
+            "Email": "owner@test.com",
+            "IsActive": true
+        },
+        "contract": {
+            "Id": "800CTR",
+            "contract_id": "CLM-001",
+            "status": "EXECUTED",
+            "all_signed": true
+        },
+        "opportunity": {
+            "Id": "006OPP",
+            "AccountId": "001ABC123",
+            "StageName": "Closed Won",
+            "Amount": 50000,
+            "CloseDate": "2025-01-15",
+            "OwnerId": "005XYZ",
+            "ContractId": "800CTR"
+        },
+        "invoice": {
+            "id": "INV-001",
+            "tranId": "INV-2025-001",
+            "status": "OVERDUE",
+            "total": 50000,
+            "amountRemaining": 10000,
+            "dueDate": "2025-01-01",
+            "entity": {"email": "billing@test.com"}
+        }
     }
     """
     
     # Initialize empty state
     state = init_state(event_type="debug")
     
-    # Hydrate with provided mock data
-    # (These would normally come from Salesforce/CLM/NetSuite API calls)
+    # Hydrate with provided mock data exactly as provided
+    # This mimics production - missing fields will cause violations
     state["account"] = payload.account
     state["user"] = payload.user
-    state["clm"] = payload.contract  # Note: renamed from "contract" to "clm" internally
+    state["clm"] = payload.contract  # Note: internally we use "clm" key
     state["opportunity"] = payload.opportunity
     state["invoice"] = payload.invoice
     
