@@ -126,56 +126,123 @@ stateDiagram-v2
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip
-- OpenAI API key (optional - uses rule-based fallback without it)
+- OpenAI API key (Recommended - uses rule-based fallback without it)
 - LangSmith API key (optional - for tracing)
 
-### Installation
+## 📦 Installation
 
-#### Option 1: Using uv (Recommended - Faster)
+### Option 1: Using `uv` (Recommended — Faster)
 
-[uv](https://docs.astral.sh/uv/) is a fast Python package installer and resolver.
+[`uv`](https://docs.astral.sh/uv/) is a fast Python package installer and environment manager.
 
+**macOS / Linux**
 ```bash
-# Install uv if you don't have it
 curl -LsSf https://astral.sh/uv/install.sh | sh
+```
 
-# Create virtual environment and install dependencies
+**Windows (PowerShell)**
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+**Project setup**
+```bash
+# Initialize project and virtual environment
 uv init
+
+# Install dependencies
 uv add -r requirements.txt
 
-# Set up environment
+# Environment variables
 cp .env.example .env
 # Edit .env with your API keys
 ```
 
-#### Option 2: Using pip
+---
+
+### Option 2: Using pip (Standard Python)
 
 ```bash
-cd onboarding-agent
-
 # Create virtual environment
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
 
+# Activate virtual environment
+# macOS / Linux
+source venv/bin/activate
+# Windows
+venv\Scripts\activate
+```
+
+```bash
 # Install dependencies
 pip install -r requirements.txt
 
-# Set up environment
+# Environment variables
 cp .env.example .env
 # Edit .env with your API keys
 ```
 
-### Run the Demo
+---
+
+## ▶️ Running the Application
+
+### Primary Entry Point (Recommended)
+
+The application is designed to be started via `main.py`, which embeds the Uvicorn server programmatically.
 
 ```bash
-# Run standalone demo (no server needed)
-python demo_standalone.py
-
-# Or start the API server
-uvicorn main:app --reload
-
-# Open API docs at http://localhost:8000/docs
+# Using uv
+uv run main.py
 ```
+
+```bash
+# Using standard Python
+python main.py
+```
+
+The server will start on:
+
+```
+http://localhost:8000
+```
+
+Health check:
+```
+GET /health
+```
+
+Interactive API docs:
+```
+http://localhost:8000/docs
+```
+
+---
+
+### Alternative: Uvicorn CLI (Optional)
+
+If you prefer to run the server using the Uvicorn CLI:
+
+```bash
+uvicorn main:app --reload
+```
+
+> **Note**: `uvicorn` is still required as a dependency even when running `python main.py`, since it is imported programmatically.
+
+---
+
+## 🧪 Optional: Standalone Demo Script
+
+The standalone demo script can be used to exercise agent logic **without starting an API server**.
+
+```bash
+python demo_standalone.py
+```
+
+This script is optional and intended for:
+- Local testing
+- Agent behavior exploration
+- Debugging without running FastAPI
+---
 
 ## 📋 Demo Scenarios
 
