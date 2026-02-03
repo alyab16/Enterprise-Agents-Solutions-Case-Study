@@ -401,6 +401,7 @@ onboarding-agent/
 
 ## 🔒 Security Features
 
+- OAuth simulation with token expiry
 - Permission checking before API calls
 - Credential validation
 - Audit logging with correlation IDs
