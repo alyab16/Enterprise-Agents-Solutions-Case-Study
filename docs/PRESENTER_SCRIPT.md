@@ -16,9 +16,9 @@
 
 ## INTRODUCTION (30 seconds)
 
-> "Hi, I'm [Your Name]. Today I'll demonstrate my Enterprise Customer Onboarding Agent - an AI-powered solution that automates the entire customer onboarding workflow from deal closure through SaaS provisioning.
+> "Hi, I'm [Your Name]. Today I'll demonstrate my Enterprise Customer Onboarding Agent which is an AI-powered solution that automates the entire customer onboarding workflow from deal closure through SaaS provisioning.
 >
-> The problem we're solving: When a sales deal closes, Customer Success teams face a manual, error-prone process - checking Salesforce, verifying contracts are signed, confirming invoices are paid, then manually provisioning the customer. This doesn't scale.
+> And the problem we're solving: When a sales deal closes, Customer Success teams face a manual, error-prone process - checking Salesforce, verifying contracts are signed, confirming invoices are paid, then manually provisioning the customer. This doesn't scale.
 >
 > My solution automates this entire workflow using a LangGraph-based AI agent. Let me show you how it works."
 
