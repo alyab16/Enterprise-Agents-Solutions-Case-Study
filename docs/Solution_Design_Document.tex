@@ -74,6 +74,20 @@ The solution implements an \textbf{AI-powered automation agent} that orchestrate
 
 \vspace{-0.3em}
 {\scriptsize\textbf{Field Selection Rationale:} \texttt{Account.IsDeleted} validates account exists; \texttt{Opportunity.StageName="Closed Won"} confirms deal closure; \texttt{Invoice.status} identifies payment blockers; \texttt{CLM.status} in \{EXECUTED, SIGNED\} required for provisioning. Minimizes API calls while capturing decision-critical data.}
+
+\vspace{1em}
+\subsection{Data Flow}
+{\scriptsize
+\begin{enumerate}[leftmargin=1.5em, itemsep=0pt]
+\item Webhook received with \texttt{account\_id} and \texttt{correlation\_id}
+\item Sequential fetch: Salesforce $\rightarrow$ CLM $\rightarrow$ NetSuite
+\item Invariant validation across 5 domains
+\item LLM risk analysis (or rule-based fallback)
+\item Decision: PROCEED $\rightarrow$ provision; BLOCK/ESCALATE $\rightarrow$ notify
+\item Generate reports and complete
+\end{enumerate}
+}
+
 \end{minipage}
 \hfill
 \begin{minipage}[t]{0.40\textwidth}
