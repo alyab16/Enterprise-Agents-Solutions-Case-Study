@@ -52,7 +52,7 @@ This is what actually orchestrates the workflow. This includes pulling the data 
 >
 > *[Show Swagger UI at /docs]*
 >
-> I'll trigger an onboarding for ACME Corp using the webhook endpoint.
+> I'll trigger an onboarding for ACME Corp using the demo endpoint.
 >
 > *[Execute POST /webhook/onboarding with account_id: ACME-001]*
 >
