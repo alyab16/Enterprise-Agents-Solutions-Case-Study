@@ -537,20 +537,50 @@ def provision_account(state: AgentState) -> AgentState:
         f"Success notification sent for {account_name}"
     )
     
-    # Send customer welcome email
+    # Send welcome email to CS Manager
     user = state.get("user", {})
     if user.get("Email"):
+        notifier.send_email(
+            to=user.get("Email"),
+            subject=f"Welcome to StackAdapt, {account_name}!",
+            body=f"Account {account_name} has been provisioned. Tenant ID: {prov_result.get('tenant_id')}",
+            account_id=account_id,
+            correlation_id=correlation_id,
+        )
+        record_notification(
+            state, "email", user.get("Email"),
+            f"CS notification sent to {user.get('Email')}"
+        )
+    
+    # Send customer welcome email (get customer email from CLM signatories)
+    clm_data = state.get("clm", {})
+    signatories = clm_data.get("signatories", [])
+    
+    # Find the customer signatory (not from StackAdapt)
+    customer_signatory = None
+    for sig in signatories:
+        email = sig.get("email", "")
+        company = sig.get("company", "")
+        # Skip internal signatories
+        if "stackadapt" not in email.lower() and "stackadapt" not in company.lower():
+            customer_signatory = sig
+            break
+    
+    if customer_signatory:
+        customer_email = customer_signatory.get("email")
+        customer_first_name = customer_signatory.get("name", "").split()[0] if customer_signatory.get("name") else "Customer"
+        
         notifier.send_customer_welcome_email(
-            customer_email=user.get("Email"),
-            customer_name=user.get("FirstName", "Customer"),
+            customer_email=customer_email,
+            customer_name=customer_first_name,
             account_name=account_name,
             tenant_id=prov_result.get("tenant_id"),
             account_id=account_id,
             correlation_id=correlation_id,
         )
         record_notification(
-            state, "email", user.get("Email"),
-            f"Welcome email sent to {user.get('Email')}"
+            state, "email", customer_email,
+            f"Customer welcome email sent to {customer_email}"
         )
     
     return state

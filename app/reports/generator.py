@@ -246,8 +246,13 @@ def generate_customer_welcome_email(
     login_url: str,
     cs_manager_name: str,
     cs_manager_email: str,
+    customer_email: str = None,  # NEW: actual customer email
 ) -> str:
     """Generate HTML welcome email for the customer."""
+    
+    # Use provided email or generate a placeholder
+    if not customer_email:
+        customer_email = f"{customer_name.lower().replace(' ', '.')}@{account_name.lower().replace(' ', '')}.com"
     
     sections = [
         {
@@ -298,7 +303,7 @@ def generate_customer_welcome_email(
     ]
     
     return generate_email_html(
-        to=f"{customer_name.lower().replace(' ', '.')}@{account_name.lower().replace(' ', '')}.com",
+        to=customer_email,
         subject=f"Welcome to StackAdapt, {account_name}! 🎉",
         body_sections=sections,
         footer_text="Questions? Reply to this email or contact your Customer Success Manager."
@@ -780,14 +785,37 @@ def generate_full_run_report(state: Dict[str, Any]) -> Dict[str, str]:
         )
         
         # Also generate customer welcome email
+        # Get customer info from CLM signatories (not from user, which is the CS manager)
+        clm_data = state.get("clm") or {}
+        signatories = clm_data.get("signatories", [])
+        
+        # Find the customer signatory (not from StackAdapt)
+        customer_signatory = None
+        for sig in signatories:
+            email = sig.get("email", "")
+            company = sig.get("company", "")
+            if "stackadapt" not in email.lower() and "stackadapt" not in company.lower():
+                customer_signatory = sig
+                break
+        
+        if customer_signatory:
+            customer_name = customer_signatory.get("name", "Customer").split()[0]  # First name
+            customer_email = customer_signatory.get("email", "customer@example.com")
+        else:
+            customer_name = "Customer"
+            customer_email = "customer@example.com"
+        
+        # Get CS manager info from user
         user = state.get("user") or {}
+        
         welcome_html = generate_customer_welcome_email(
-            customer_name=user.get("FirstName", "Customer"),
+            customer_name=customer_name,
             account_name=account_name,
             tenant_id=provisioning.get("tenant_id", "N/A"),
             login_url="https://app.stackadapt.demo/login",
-            cs_manager_name=user.get("Name", "Sarah Johnson"),
+            cs_manager_name=user.get("Name", "Your Customer Success Manager"),
             cs_manager_email=user.get("Email", "cs@stackadapt.demo"),
+            customer_email=customer_email,  # Pass customer email for the "To:" field
         )
         generated_files["welcome_email_html"] = save_email_html(
             f"email_welcome_{account_id}_{timestamp}.html",
