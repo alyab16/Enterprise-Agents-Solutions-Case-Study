@@ -75,7 +75,7 @@ async def run_demo_scenario(account_id: str, generate_report: bool = False):
     Run a specific demo scenario by account ID.
     
     Args:
-        account_id: The scenario ID to run (e.g., ACME-001, AUTH-ERROR)
+        account_id: The scenario ID to run (e.g., ACME-001)
         generate_report: If true, also generates HTML/Markdown/JSON reports
                         (Note: Reports are NOT generated for error simulation scenarios)
     
