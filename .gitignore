@@ -224,3 +224,9 @@ docs/Solution_Design_Document.synctex.gz
 docs/Solution_Design_Document.synctex(busy)
 
 .idea/*
+
+uv.lock
+
+pyproject.toml
+
+.python-version
