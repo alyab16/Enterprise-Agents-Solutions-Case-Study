@@ -238,7 +238,7 @@ Batch & Scheduler & \texttt{POST /demo/run-all} \\
 \vspace{0.4em}
 \begin{figure}[H]
     \centering
-    \includegraphics[width=\textwidth]{04_state_machine.png}
+    \includegraphics[width=\linewidth]{04_state_machine.png}
     \vspace{-0.6em}
 \end{figure}
 
@@ -454,6 +454,9 @@ Concurrency limits, rate limiting, and circuit breakers would be enforced at the
 \vspace{0.25em}
 {\scriptsize
 \textbf{Deterministic Decision Boundaries}: The onboarding agent follows a hybrid execution model in which deterministic business rules define all state transitions and final decisions (\texttt{PROCEED}, \texttt{ESCALATE}, \texttt{BLOCK}). LLM components are strictly advisory and are limited to risk interpretation, summarization, and action recommendations. LLM outputs cannot directly mutate agent state or override invariant checks, ensuring predictable, testable, and auditable outcomes.
+
+\vspace{0.35em}
+\textbf{Optimized Data Fetching}: To minimize latency when fetching from Salesforce, CLM, and NetSuite, the agent employs a tiered optimization strategy: \textbf{(1)} Batch API requests where supported (e.g., Salesforce Composite API) to retrieve Account, Opportunity, User, and Contract in a single round-trip; \textbf{(2)} Concurrent multithreaded fetches for systems that don't support batching, with configurable thread pools per integration; \textbf{(3)} Bounded retry logic with exponential backoff (max 3 retries, 1s/2s/4s delays) for transient failures before escalating to permanent failure state.
 
 \vspace{0.35em}
 \textbf{Idempotency \& Correlation-Based Execution}: Each onboarding run is keyed by a \texttt{correlation\_id} propagated across webhook ingestion, integrations, logs, reports, and notifications. This enables safe replays, deduplication of duplicate webhook events, and re-entrant execution without risk of duplicate provisioning, notifications, or side effects.
