@@ -15,9 +15,12 @@ This agent automates the customer journey from **Sales → Contract → Invoice 
 - **Report Generation**: HTML emails, Markdown reports, JSON audit logs
 - **Full Observability**: LangSmith tracing, structured JSON logging, audit trails
 
-## 📚 Documentation
+## 🎥 Video Demo Walkthrough
 
-- **[Solution Design Document](docs/SOLUTION_DESIGN.md)** - Full architecture, trade-offs, MCP collaboration overview
+Watch the full solution walkthrough here:
+
+👉 **[View Demo Video](https://drive.google.com/file/d/1m-0gMy5IV1vH42WWg4bLWKed_17RzZn-/view)**
+
 
 ## 🏗️ Architecture
 
