@@ -316,7 +316,6 @@ LLM Advisory Only & Auditable but less adaptive \\
 \item \textbf{Mock integrations}: Salesforce, NetSuite, and CLM use simulated data; not connected to real APIs
 \item \textbf{In-memory state}: Provisioning and task data lost on restart; no persistent database
 \item \textbf{Single instance}: No horizontal scaling or load balancing for high-volume webhooks
-\item \textbf{No transient retry}: API failures (5xx, timeouts) halt immediately without retry/backoff
 \item \textbf{No approval UI}: ESCALATE decisions notify Slack but lack a UI for human approve/reject workflow
 \item \textbf{No webhook auth}: Inbound webhooks not verified via HMAC signature or shared secret
 \end{itemize}
