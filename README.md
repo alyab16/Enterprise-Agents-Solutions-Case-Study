@@ -484,7 +484,3 @@ With LangSmith tracing enabled, you can:
 - Debug agent decisions
 - Monitor latency and token usage
 - Analyze LLM calls
-
-## 📄 License
-
-MIT License - Built for StackAdapt Case Study
