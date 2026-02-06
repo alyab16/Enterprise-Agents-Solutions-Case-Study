@@ -192,11 +192,11 @@ cp .env.example .env
 Create a `.env` file in the project root (or copy from `.env.example`):
 
 ```env
-# OpenAI (optional - falls back to rule-based risk analysis without it)
+# OpenAI
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o-mini
 
-# LangSmith tracing (optional - for observability)
+# LangSmith tracing
 LANGCHAIN_API_KEY=ls-...
 LANGCHAIN_TRACING_V2=true
 LANGCHAIN_PROJECT=onboarding-agent
