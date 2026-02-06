@@ -440,33 +440,46 @@ PUT /demo/tasks/ACME-001/ACME-001-T005?status=completed&completed_by=john@compan
 
 ```
 Enterprise-Agents-Solutions-Case-Study/
-├── main.py                      # FastAPI application
-├── demo_standalone.py           # Standalone demo script
-├── docs/
-│   └── SOLUTION_DESIGN.md       # Full solution design document
-├── reports_output/              # Generated reports directory
+├── main.py                          # FastAPI application
+├── demo_standalone.py               # Standalone demo script
+│
+├── solution_design/        # Architecture & technical design assets
+│   ├── 01_architecture.png
+│   ├── 02_decision.png
+│   ├── 03_mcp_architecture.png
+│   ├── 04_state_machine.png
+│   ├── Solution_Design_Document.tex
+│   └── Solution_Design_Document.pdf
+│
+├── reports_output/                  # Generated reports directory
+├── logs/                           # Runtime logs
+│
 └── app/
-    ├── agent/                   # LangGraph workflow
-    │   ├── graph.py            # Workflow definition
-    │   ├── nodes.py            # Processing steps
-    │   ├── router.py           # Decision routing
-    │   ├── state.py            # State definition
-    │   ├── state_utils.py      # State manipulation utilities
-    │   └── invariants/         # Business rules
-    ├── api/                    # REST endpoints
-    │   ├── demo.py             # Demo endpoints with error simulation
-    │   └── webhook.py          # Webhook handlers
-    ├── integrations/           # Mock API clients
-    │   ├── salesforce.py       # Salesforce CRM
-    │   ├── clm.py              # Contract Lifecycle
-    │   ├── netsuite.py         # NetSuite ERP
-    │   ├── provisioning.py     # SaaS provisioning
-    │   └── api_errors.py       # Shared error types & simulator
-    ├── llm/                    # LLM integration
-    │   └── risk_analyzer.py    # Risk analysis with fallback
-    ├── notifications/          # Slack/Email
-    ├── reports/                # Report generation
-    └── logging/                # Structured logging
+    ├── agent/                      # LangGraph workflow
+    │   ├── graph.py                # Workflow definition
+    │   ├── nodes.py                # Processing steps
+    │   ├── router.py               # Decision routing
+    │   ├── state.py                # State definition
+    │   ├── state_utils.py          # State manipulation utilities
+    │   └── invariants/             # Business rules
+    │
+    ├── api/                        # REST endpoints
+    │   ├── demo.py                 # Demo endpoints with error simulation
+    │   └── webhook.py              # Webhook handlers
+    │
+    ├── integrations/               # Mock API clients
+    │   ├── salesforce.py
+    │   ├── clm.py
+    │   ├── netsuite.py
+    │   ├── provisioning.py
+    │   └── api_errors.py
+    │
+    ├── llm/                        # LLM integration
+    │   └── risk_analyzer.py
+    │
+    ├── notifications/              # Slack / Email
+    ├── reports/                    # Report generation
+    └── logging/                    # Structured logging
 ```
 
 ## 🔒 Security Features
