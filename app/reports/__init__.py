@@ -1,6 +1,7 @@
 from .generator import (
     generate_email_html,
     generate_blocked_notification_email,
+    generate_escalation_notification_email,   # <-- ADD THIS
     generate_success_notification_email,
     generate_customer_welcome_email,
     generate_api_error_notification_email,
@@ -15,6 +16,7 @@ from .generator import (
 __all__ = [
     "generate_email_html",
     "generate_blocked_notification_email",
+    "generate_escalation_notification_email",   # <-- ADD THIS
     "generate_success_notification_email",
     "generate_customer_welcome_email",
     "generate_api_error_notification_email",

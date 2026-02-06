@@ -178,6 +178,79 @@ def generate_blocked_notification_email(
     )
 
 
+def generate_escalation_notification_email(
+    account_name: str,
+    account_id: str,
+    warnings: Dict[str, List[str]],
+    recommended_actions: List[Dict[str, Any]],
+    correlation_id: str,
+) -> str:
+    """Generate HTML email for escalated onboarding notification (needs human review)."""
+
+    # Build warnings list
+    warnings_html = "<ul style='margin: 0; padding-left: 20px;'>"
+    for domain, msgs in warnings.items():
+        for msg in msgs:
+            warnings_html += f"<li style='color: #856404; margin: 5px 0;'><strong>{domain}:</strong> {msg}</li>"
+    warnings_html += "</ul>"
+
+    # Build actions list
+    actions_html = "<ol style='margin: 0; padding-left: 20px;'>"
+    for action in recommended_actions:
+        if isinstance(action, dict):
+            actions_html += f"<li style='margin: 5px 0;'>{action.get('action', str(action))} <span style='color: #888;'>({action.get('owner', 'TBD')})</span></li>"
+        else:
+            actions_html += f"<li style='margin: 5px 0;'>{action}</li>"
+    actions_html += "</ol>"
+
+    sections = [
+        {
+            "title": "⚠️ Onboarding Status: NEEDS REVIEW",
+            "content": f"""
+                <div style="background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 15px; margin-bottom: 15px;">
+                    <p style="margin: 0; color: #856404;">
+                        The onboarding process for <strong>{account_name}</strong> has been escalated for human review due to non-blocking warnings that may require attention.
+                    </p>
+                </div>
+            """
+        },
+        {
+            "title": "⚠️ Warnings Requiring Review",
+            "content": warnings_html
+        },
+        {
+            "title": "📋 Recommended Actions",
+            "content": actions_html
+        },
+        {
+            "title": "ℹ️ What Happens Next",
+            "content": """
+                <p style="color: #555;">
+                    A member of the Customer Success team should review the warnings above and decide whether to:
+                </p>
+                <ul style="margin: 0; padding-left: 20px; color: #555;">
+                    <li style="margin: 5px 0;"><strong>Approve</strong> — proceed with onboarding despite the warnings</li>
+                    <li style="margin: 5px 0;"><strong>Resolve</strong> — address the issues before continuing</li>
+                </ul>
+            """
+        },
+        {
+            "title": "🔗 Quick Links",
+            "content": f"""
+                <p>
+                    <a href="https://crm.example.com/accounts/{account_id}" style="color: #667eea; text-decoration: none;">View in Salesforce</a> |
+                    <a href="https://agent.example.com/runs/{correlation_id}" style="color: #667eea; text-decoration: none;">View Agent Run</a>
+                </p>
+            """
+        }
+    ]
+
+    return generate_email_html(
+        to="cs-team@stackadapt.com",
+        subject=f"⚠️ Onboarding Needs Review - {account_name}",
+        body_sections=sections
+    )
+
 def generate_success_notification_email(
     account_name: str,
     account_id: str,
@@ -768,7 +841,19 @@ def generate_full_run_report(state: Dict[str, Any]) -> Dict[str, str]:
                 f"email_blocked_{account_id}_{timestamp}.html",
                 email_html
             )
-    
+    elif decision == "ESCALATE":
+        email_html = generate_escalation_notification_email(
+            account_name=account_name,
+            account_id=account_id,
+            warnings=state.get("warnings", {}),
+            recommended_actions=state.get("risk_analysis", {}).get("recommended_actions", []),
+            correlation_id=correlation_id,
+        )
+        generated_files["email_html"] = save_email_html(
+            f"email_escalation_{account_id}_{timestamp}.html",
+            email_html
+        )
+
     elif decision == "PROCEED":
         provisioning = state.get("provisioning", {})
         email_html = generate_success_notification_email(

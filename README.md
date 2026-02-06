@@ -187,6 +187,32 @@ cp .env.example .env
 
 ---
 
+### Environment Variables
+
+Create a `.env` file in the project root (or copy from `.env.example`):
+
+```env
+# OpenAI (optional - falls back to rule-based risk analysis without it)
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
+
+# LangSmith tracing (optional - for observability)
+LANGCHAIN_API_KEY=ls-...
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_PROJECT=onboarding-agent
+LANGCHAIN_ENDPOINT=https://api.smith.langchain.com
+
+# Logging
+LOG_DIR=logs
+
+# Environment
+ENVIRONMENT=development
+```
+
+> **Note**: The agent works fully without any API keys. OpenAI enables LLM-powered risk analysis (instead of the rule-based fallback), and LangSmith enables execution tracing.
+
+---
+
 ## ▶️ Running the Application
 
 ### Primary Entry Point (Recommended)
@@ -257,6 +283,7 @@ This script is optional and intended for:
 | BETA-002 | Opportunity Not Won | 🚫 BLOCK |
 | GAMMA-003 | Overdue Invoice | ⚠️ ESCALATE |
 | DELETED-004 | Deleted Account | 🚫 BLOCK |
+| MISSING-999 | Account Not Found | 🚫 BLOCK |
 
 ### Error Simulation
 
@@ -385,7 +412,7 @@ flowchart TD
 
 The agent generates professional reports for each run:
 
-- **HTML Email Templates** - Blocked notifications, success notifications, welcome emails
+- **HTML Email Templates** - Blocked notifications, escalation notifications, success notifications, welcome emails
 - **Markdown Reports** - Complete run summary with violations, warnings, API errors, and actions
 - **JSON Audit Logs** - Machine-readable audit trail with full state
 
@@ -482,13 +509,15 @@ Enterprise-Agents-Solutions-Case-Study/
     └── logging/                    # Structured logging
 ```
 
-## 🔒 Security Features
+## 🔒 Security Patterns Demonstrated
 
-- OAuth simulation with token expiry
-- Permission checking before API calls
-- Credential validation
-- Audit logging with correlation IDs
-- Error masking (no sensitive data in responses)
+All integrations in this project are mocked, but they demonstrate the following production security patterns:
+
+- **OAuth simulation** with token expiry and refresh flows
+- **Permission checking** before every API call (role-based access control)
+- **Credential validation** with distinct error types for expired vs invalid tokens
+- **Audit logging** with correlation IDs for end-to-end traceability
+- **Error masking** — no sensitive data (tokens, secrets) exposed in API responses or reports
 
 ## 📊 Observability
 
@@ -497,3 +526,61 @@ With LangSmith tracing enabled, you can:
 - Debug agent decisions
 - Monitor latency and token usage
 - Analyze LLM calls
+
+## 🚧 Areas for Improvement
+
+The following features would enhance the agent for production use:
+
+### Current Limitations
+
+| Limitation | Current State | Production Enhancement |
+|------------|---------------|----------------------|
+| **Task monitoring is passive** | Must call `/tasks/{id}/overdue` endpoint manually | Add scheduled job to check hourly and send automatic Slack reminders |
+| **No human-in-the-loop approval** | ESCALATE notifies but doesn't wait for approval | Add Slack interactive buttons for approve/reject before provisioning |
+| **No escalation hierarchy** | Notifications go to CS team only | If no action taken within X days, escalate to CS Manager/Director |
+| **Event-driven task completion** | Tasks must be manually marked complete via API | Integrate webhooks from SaaS platform to auto-complete when customer takes action |
+| **No customer-facing portal** | Customer can't see their onboarding progress | Build React dashboard showing task checklist and status |
+| **Single workflow execution** | Agent runs once per trigger | Add retry/resume capability for failed workflows |
+
+### Proactive vs Passive Features
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Invoice overdue warning | ✅ Proactive | Detected during onboarding, triggers ESCALATE |
+| Contract pending signatures | ✅ Proactive | Warning generated, CS notified via Slack |
+| Risk analysis recommendations | ✅ Proactive | LLM suggests actions before problems escalate |
+| Task overdue detection | ⚠️ Passive | Endpoint exists but requires manual polling |
+| Task due date reminders | ❌ Not implemented | Would need scheduled job |
+| Customer action tracking | ❌ Not implemented | Would need SaaS platform webhooks |
+| Escalation to management | ❌ Not implemented | Would need threshold-based escalation rules |
+
+### Suggested Enhancements
+
+1. **Task Monitor Agent**: Scheduled job that runs hourly to detect overdue tasks and send proactive Slack reminders to CS team.
+
+2. **Escalation Hierarchy**: If CS team doesn't act on an ESCALATE notification within a threshold (e.g., 48 hours), automatically notify CS Manager. If still unresolved after another threshold, escalate to CS Director.
+   ```
+   Day 0: ESCALATE → Notify CS Team (#cs-onboarding)
+   Day 2: No action → Notify CS Manager (@cs-manager)
+   Day 4: Still unresolved → Notify CS Director (@cs-director)
+   ```
+
+3. **Event-Driven Task Completion**: Webhooks from the SaaS platform to automatically mark tasks complete:
+   ```
+   Customer logs in → Mark "Verify Login Access" complete
+   Customer completes tour → Mark "Complete Platform Tour" complete
+   ```
+
+4. **Approval Workflow**: For ESCALATE decisions, send Slack message with interactive buttons:
+   ```
+   ⚠️ ACME Corp needs review - Invoice overdue
+   [Approve Provisioning] [Reject] [View Details]
+   ```
+
+5. **Optimized Data Fetching**: Batch API requests (Salesforce Composite API) and concurrent multithreaded calls with bounded retry logic to reduce latency.
+
+6. **Real-Time Dashboard**: React frontend showing:
+   - Active onboardings with status
+   - Task checklists with progress bars
+   - Overdue alerts and escalation status
+   - One-click actions for CS team

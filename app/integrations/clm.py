@@ -291,21 +291,56 @@ MOCK_CLM_DB: Dict[str, Dict[str, Any]] = {
         "contract_id": "CLM-CTR-003",
         "external_id": "GAMMA-003",
         "name": "Gamma Startup - Starter Agreement",
-        "status": "DRAFT",
+        "status": "EXECUTED",
         "status_details": {
-            "code": "DRAFT",
-            "label": "Draft",
-            "description": "Contract is being prepared"
+            "code": "EXECUTED",
+            "label": "Fully Executed",
+            "description": "All parties have signed"
         },
-        "created_date": "2024-01-18T10:00:00Z",
-        "signatories": [],
+        "created_date": "2024-01-10T10:00:00Z",
+        "sent_date": "2024-01-12T09:00:00Z",
+        "signed_date": "2024-01-18T16:00:00Z",
+        "effective_date": "2024-01-20",
+        "expiry_date": "2025-01-19",
+        "signatories": [
+            {
+                "id": "SIG-005",
+                "name": "Alex Chen",
+                "email": "alex.chen@gammastartup.io",
+                "role": "CEO",
+                "company": "Gamma Startup",
+                "signed": True,
+                "signed_date": "2024-01-17T11:00:00Z",
+                "ip_address": "203.0.113.42",
+            },
+            {
+                "id": "SIG-006",
+                "name": "Sarah Johnson",
+                "email": "sarah.johnson@stackadapt.com",
+                "role": "CS Manager",
+                "company": "StackAdapt",
+                "signed": True,
+                "signed_date": "2024-01-18T16:00:00Z",
+                "ip_address": "10.0.0.50",
+            },
+        ],
         "key_terms": {
             "payment_terms": "Net 30",
+            "auto_renewal": False,
             "sla_tier": "Starter",
             "support_hours": "Business Hours",
         },
+        "audit_trail": [
+            {"action": "created", "user": "system", "timestamp": "2024-01-10T10:00:00Z"},
+            {"action": "sent_for_signature", "user": "sarah.johnson", "timestamp": "2024-01-12T09:00:00Z"},
+            {"action": "signed", "user": "alex.chen@gammastartup.io", "timestamp": "2024-01-17T11:00:00Z"},
+            {"action": "signed", "user": "sarah.johnson", "timestamp": "2024-01-18T16:00:00Z"},
+            {"action": "executed", "user": "system", "timestamp": "2024-01-18T16:00:00Z"},
+        ],
         "links": {
             "self": "/api/v1/contracts/CLM-CTR-003",
+            "download": "/api/v1/contracts/CLM-CTR-003/download",
+            "audit": "/api/v1/contracts/CLM-CTR-003/audit",
         }
     },
     # Error simulation entries

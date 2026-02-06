@@ -43,7 +43,7 @@
 % Title
 \begin{center}
 {\large\bfseries\color{primary} Enterprise Customer Onboarding Agent --- Solution Design Document}\\[0.05em]
-{\small February 2025 | StackAdapt Case Study Submission}
+{\small February 2026 | StackAdapt Case Study Submission}
 \end{center}
 
 %==============================================================================
@@ -229,7 +229,7 @@ Batch & Scheduler & \texttt{POST /demo/run-all} \\
 {\scriptsize\textbf{Report Generation}: Each run produces three output files:
 \begin{itemize}[leftmargin=1.2em]
 \item \texttt{run\_report\_*.md} -- Full Markdown report with all details
-\item \texttt{email\_*.html} -- Professional HTML email template
+\item \texttt{email\_*.html} -- Professional HTML email (blocked, escalation, success, or welcome)
 \item \texttt{audit\_*.json} -- Machine-readable audit log
 \end{itemize}
 }
@@ -239,6 +239,7 @@ Batch & Scheduler & \texttt{POST /demo/run-all} \\
 \begin{figure}[H]
     \centering
     \includegraphics[width=\linewidth]{04_state_machine.png}
+    \caption{State machine: full lifecycle from webhook ingestion through decision routing to completion.}
     \vspace{-0.6em}
 \end{figure}
 
@@ -342,7 +343,7 @@ The system includes 5 pre-configured demo scenarios validating all decision path
 \texttt{ACME-001} & Happy Path & All checks pass, contract executed, invoice paid & PROCEED \\
 \texttt{BETA-002} & Opportunity Blocked & Opportunity in ``Negotiation'' stage & BLOCK \\
 \texttt{GAMMA-003} & Overdue Invoice & Invoice 25+ days overdue, needs finance review & ESCALATE \\
-\texttt{DELETED-004} & Invalid Account & Account marked \texttt{IsDeleted=true} & BLOCK \\
+\texttt{DELETED-004} & Deleted Account & Account marked \texttt{IsDeleted=true} & BLOCK \\
 \texttt{MISSING-999} & Account Not Found & Account does not exist in any system & BLOCK \\
 \bottomrule
 \end{tabularx}
