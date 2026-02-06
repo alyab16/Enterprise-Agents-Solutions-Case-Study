@@ -123,7 +123,7 @@ def generate_blocked_notification_email(
         warnings_html = "<ul style='margin: 0; padding-left: 20px;'>"
         for domain, msgs in warnings.items():
             for msg in msgs:
-                warnings_html += f"<li style='color: #ffc107; margin: 5px 0;'><strong>{domain}:</strong> {msg}</li>"
+                warnings_html += f"<li style='color: #856404; margin: 5px 0;'><strong>{domain}:</strong> {msg}</li>"
         warnings_html += "</ul>"
     else:
         warnings_html = "<p style='color: #28a745;'>None</p>"
