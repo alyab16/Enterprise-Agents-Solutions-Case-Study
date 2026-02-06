@@ -439,7 +439,7 @@ PUT /demo/tasks/ACME-001/ACME-001-T005?status=completed&completed_by=john@compan
 ## 📁 Project Structure
 
 ```
-onboarding-agent/
+Enterprise-Agents-Solutions-Case-Study/
 ├── main.py                      # FastAPI application
 ├── demo_standalone.py           # Standalone demo script
 ├── docs/
