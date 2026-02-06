@@ -315,7 +315,7 @@ POST /demo/disable-random-errors
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/demo/reports` | List generated reports |
-| GET | `/demo/reports/{filename}` | View report (renders HTML) |
+| GET | `/demo/reports/{filename}` | Get report content (HTML returned as response body) |
 | GET | `/demo/reports/{filename}/download` | Download report |
 
 ## 🔧 Error Handling Architecture
