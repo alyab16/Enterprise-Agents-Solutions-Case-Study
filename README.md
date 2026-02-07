@@ -629,6 +629,8 @@ The following features would enhance the agent for production use:
 
 ### Suggested Enhancements
 
+#### Workflow & Notifications
+
 1. **Task Monitor Agent**: Scheduled job that runs hourly to detect overdue tasks and send proactive Slack reminders to CS team.
 
 2. **Escalation Hierarchy**: If CS team doesn't act on an ESCALATE notification within a threshold (e.g., 48 hours), automatically notify CS Manager. If still unresolved after another threshold, escalate to CS Director.
@@ -638,19 +640,23 @@ The following features would enhance the agent for production use:
    Day 4: Still unresolved → Notify CS Director (@cs-director)
    ```
 
-3. **Event-Driven Task Completion**: Webhooks from the SaaS platform to automatically mark tasks complete:
-   ```
-   Customer logs in → Mark "Verify Login Access" complete
-   Customer completes tour → Mark "Complete Platform Tour" complete
-   ```
-
-4. **Approval Workflow**: For ESCALATE decisions, send Slack message with interactive buttons:
+3. **Approval Workflow**: For ESCALATE decisions, send Slack message with interactive buttons:
    ```
    ⚠️ ACME Corp needs review - Invoice overdue
    [Approve Provisioning] [Reject] [View Details]
    ```
 
+#### Event-Driven Integration
+
+4. **Event-Driven Task Completion**: Webhooks from the SaaS platform to automatically mark tasks complete:
+   ```
+   Customer logs in → Mark "Verify Login Access" complete
+   Customer completes tour → Mark "Complete Platform Tour" complete
+   ```
+
 5. **Optimized Data Fetching**: Batch API requests (Salesforce Composite API) and concurrent multithreaded calls with bounded retry logic to reduce latency.
+
+#### Frontend & Observability
 
 6. **Real-Time Dashboard**: React frontend showing:
    - Active onboardings with status
@@ -658,4 +664,6 @@ The following features would enhance the agent for production use:
    - Overdue alerts and escalation status
    - One-click actions for CS team
 
-7. **MCP and A2A Protocol Integration**: Each integration (Salesforce, CLM, NetSuite, Tasks) could be wrapped in a dedicated [MCP](https://modelcontextprotocol.io/) server, standardizing how the onboarding agent accesses external tools and data through a single protocol. If those MCP servers evolve into autonomous agents with their own decision-making. For example, a Finance Agent that proactively flags credit risk rather than just fetching invoices, or a Compliance Agent that validates data residency requirements before tenant provisioning. Then Google's [Agent2Agent (A2A)](https://a2a-protocol.org/) protocol could enable peer-to-peer collaboration between them. MCP handles the agent-to-tool layer, while A2A handles the agent-to-agent layer.
+#### Multi-Agent Architecture
+
+7. **MCP and A2A Protocol Integration**: Each integration (Salesforce, CLM, NetSuite, Tasks) could be wrapped in a dedicated [MCP](https://modelcontextprotocol.io/) server, standardizing how the onboarding agent accesses external tools and data through a single protocol. If those MCP servers evolve into autonomous agents with their own decision-making — for example, a Finance Agent that proactively flags credit risk rather than just fetching invoices, or a Compliance Agent that validates data residency requirements before tenant provisioning — then Google's [Agent2Agent (A2A)](https://a2a-protocol.org/) protocol could enable peer-to-peer collaboration between them. MCP handles the agent-to-tool layer, while A2A handles the agent-to-agent layer. This is particularly relevant given that Salesforce, UKG, and Workday are all A2A partners, making future interoperability with their vendor-provided agents a realistic path.

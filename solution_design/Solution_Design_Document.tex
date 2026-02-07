@@ -472,12 +472,14 @@ Concurrency limits, rate limiting, and circuit breakers would be enforced at the
 
 \vspace{0.35em}
 \textbf{LLM Data Governance \& Security}: All data sent to LLMs is explicitly field-filtered and sanitized to prevent leakage of sensitive information. PII is masked prior to inference, and external system credentials are never exposed beyond their integration boundaries. Trust boundaries between systems are strictly enforced at the API layer.
-}
 
+\vspace{0.35em}
+\textbf{Multi-Agent Interoperability}: As described in Section 5, wrapping integrations behind MCP servers cleanly separates agent logic from external system access, enabling independent versioning, access control, and audit logging.
 
-\vfill
 \begin{center}
 \textcolor{secondary}{\scriptsize Enterprise Onboarding Agent | StackAdapt Case Study | Full source code and documentation in attached repository}
 \end{center}
+
+
 
 \end{document}
