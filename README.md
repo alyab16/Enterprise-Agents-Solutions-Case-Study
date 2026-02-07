@@ -27,65 +27,104 @@ Watch the full solution walkthrough here:
 ### High-Level Flow
 
 ```mermaid
+%%{
+init: {
+  "theme": "base",
+  "themeVariables": {
+    "background": "#ffffff",
+    "primaryColor": "#f7f9fc",
+    "primaryBorderColor": "#c7d0e0",
+    "lineColor": "#6b7a90",
+    "primaryTextColor": "#1f2937",
+    "clusterBkg": "#f2f5fb",
+    "clusterBorder": "#d6deeb",
+    "fontSize": "14px"
+  }
+}
+}%%
+
 flowchart TB
-    subgraph Triggers["🔔 Trigger Layer"]
-        SF[Salesforce Webhook]
-        API[Manual API Call]
-        CRON[Scheduled Job]
-    end
 
-    subgraph Agent["🤖 LangGraph Agent"]
-        INIT[Initialize State]
-        FETCH[Fetch Data]
-        VALIDATE[Validate Rules]
-        ANALYZE[Analyze Risks]
-        DECIDE{Decision Router}
-        
-        INIT --> FETCH
-        FETCH --> VALIDATE
-        VALIDATE --> ANALYZE
-        ANALYZE --> DECIDE
-    end
+%% ------------ TRIGGERS ------------
+subgraph T["🔔 Trigger Layer"]
+direction LR
+SF["📡 Salesforce<br/>Webhook"]
+API["🔧 Manual REST API"]
+CRON["⏰ Cron Job Scheduler"]
+end
 
-    subgraph Actions["⚡ Actions"]
-        BLOCK[🚫 BLOCK]
-        ESCALATE[⚠️ ESCALATE]
-        PROCEED[✅ PROCEED]
-        
-        NOTIFY[Send Notifications]
-        PROVISION[Provision Account]
-        SUMMARY[Generate Summary]
-    end
+%% ------------ AGENT ------------
+subgraph A["🤖 Autonomous Onboarding Orchestrator"]
+direction TB
+INIT["Initialize State"]
+FETCH["Fetch External Data"]
+VALIDATE["Business Rules Engine"]
+ANALYZE["LLM Risk Analysis"]
+DECIDE{"Decision Router"}
 
-    subgraph Integrations["🔌 Integrations"]
-        CRM[(Salesforce CRM)]
-        CLM[(CLM Contracts)]
-        ERP[(NetSuite ERP)]
-        SAAS[(SaaS Platform)]
-        SLACK[Slack]
-        EMAIL[Email]
-    end
+INIT --> FETCH --> VALIDATE --> ANALYZE --> DECIDE
+end
 
-    SF --> INIT
-    API --> INIT
-    CRON --> INIT
-    
-    DECIDE -->|violations > 0 OR api_errors > 0| BLOCK
-    DECIDE -->|warnings > 0| ESCALATE
-    DECIDE -->|all clear| PROCEED
-    
-    BLOCK --> NOTIFY
-    ESCALATE --> NOTIFY
-    PROCEED --> PROVISION
-    PROVISION --> NOTIFY
-    NOTIFY --> SUMMARY
-    
-    FETCH <--> CRM
-    FETCH <--> CLM
-    FETCH <--> ERP
-    PROVISION <--> SAAS
-    NOTIFY <--> SLACK
-    NOTIFY <--> EMAIL
+%% ------------ ACTIONS ------------
+subgraph AC["⚡ Action Execution"]
+direction TB
+BLOCK["🚫 Block"]
+ESCALATE["⚠️ Escalate"]
+PROCEED["✅ Proceed"]
+
+PROVISION["🚀 Provision Tenant"]
+NOTIFY["📢 Notify Stakeholders"]
+SUMMARY["📊 Generate Audit Report"]
+end
+
+%% ------------ INTEGRATIONS ------------
+subgraph I["🔌 Integration Layer"]
+direction LR
+CRM[("Salesforce CRM")]
+CLM[("CLM Contracts")]
+ERP[("NetSuite ERP")]
+SAAS[("SaaS Platform")]
+SLACK[("Slack")]
+EMAIL[("Email")]
+end
+
+%% FLOWS
+SF -.-> INIT
+API -.-> INIT
+CRON -.-> INIT
+
+DECIDE -->|violations > 0 OR api_errors > 0| BLOCK
+DECIDE -->|warnings > 0| ESCALATE
+DECIDE -->|all clear| PROCEED
+
+BLOCK --> NOTIFY
+ESCALATE --> NOTIFY
+PROCEED --> PROVISION --> NOTIFY --> SUMMARY
+
+FETCH <-->|REST API| CRM
+FETCH <-->|REST API| CLM
+FETCH <-->|REST API| ERP
+PROVISION <-->|Create Tenant| SAAS
+NOTIFY <-->|Message| SLACK
+NOTIFY <-->|Send| EMAIL
+
+%% STYLES
+
+classDef agent fill:#e8f0ff,stroke:#5b8def,stroke-width:2px
+classDef decision fill:#fff4e5,stroke:#f59e0b,stroke-width:2px
+classDef action fill:#e6f7ee,stroke:#2e9d69,stroke-width:2px
+classDef danger fill:#fde8e8,stroke:#e5484d,stroke-width:2px
+classDef warn fill:#fff7db,stroke:#d4a017,stroke-width:2px
+classDef success fill:#e6f9f0,stroke:#2fb171,stroke-width:2px
+classDef infra fill:#f1ecff,stroke:#8b7cf6,stroke-width:2px
+
+class INIT,FETCH,VALIDATE,ANALYZE agent
+class DECIDE decision
+class BLOCK danger
+class ESCALATE warn
+class PROCEED success
+class PROVISION,NOTIFY,SUMMARY action
+class CRM,CLM,ERP,SAAS,SLACK,EMAIL infra
 ```
 
 ### Decision Logic
@@ -348,54 +387,97 @@ POST /demo/disable-random-errors
 ## 🔧 Error Handling Architecture
 
 ```mermaid
+%%{
+init: {
+  "theme": "base",
+  "themeVariables": {
+    "background": "#ffffff",
+    "primaryColor": "#f7f9fc",
+    "primaryBorderColor": "#c7d0e0",
+    "lineColor": "#6b7a90",
+    "primaryTextColor": "#1f2937",
+    "clusterBkg": "#f2f5fb",
+    "clusterBorder": "#d6deeb",
+    "fontSize": "14px"
+  }
+}
+}%%
+
 flowchart TD
-    subgraph Integration["Integration Layer"]
-        SF_CALL[Salesforce API Call]
-        CLM_CALL[CLM API Call]
-        NS_CALL[NetSuite API Call]
-    end
-    
-    subgraph ErrorSim["Error Simulator"]
-        SIM[ERROR_SIMULATOR.maybe_raise_error]
-        AUTH[Auth Error]
-        RATE[Rate Limit]
-        VAL[Validation Error]
-        SRV[Server Error]
-    end
-    
-    subgraph Catching["Error Handling"]
-        CATCH_SPECIFIC[Catch Specific Errors]
-        CATCH_API[Catch Generic APIError]
-        PAYLOAD[Create Error Payload]
-    end
-    
-    subgraph State["Agent State"]
-        API_ERRORS[api_errors list]
-        VIOLATIONS[violations dict]
-        DECISION[make_decision]
-    end
-    
-    SF_CALL --> SIM
-    CLM_CALL --> SIM
-    NS_CALL --> SIM
-    
-    SIM -->|random| AUTH
-    SIM -->|random| RATE
-    SIM -->|random| VAL
-    SIM -->|random| SRV
-    
-    AUTH --> CATCH_SPECIFIC
-    RATE --> CATCH_SPECIFIC
-    VAL --> CATCH_SPECIFIC
-    SRV --> CATCH_SPECIFIC
-    CATCH_SPECIFIC --> CATCH_API
-    CATCH_API --> PAYLOAD
-    
-    PAYLOAD --> API_ERRORS
-    API_ERRORS --> DECISION
-    VIOLATIONS --> DECISION
-    
-    DECISION -->|api_errors > 0| BLOCK[🚫 BLOCK]
+
+%% ------------ INTEGRATIONS ------------
+subgraph INT["🔌 Integration Layer"]
+SF_CALL["Salesforce API Call"]
+CLM_CALL["CLM API Call"]
+NS_CALL["NetSuite API Call"]
+end
+
+%% ------------ ERROR SIMULATOR ------------
+subgraph SIML["🎲 Error Simulation Layer"]
+SIM["ERROR_SIMULATOR<br/>maybe_raise_error"]
+
+AUTH["🔐 Auth Error"]
+RATE["⏳ Rate Limit"]
+VAL["⚠️ Validation Error"]
+SRV["💥 Server Error"]
+end
+
+%% ------------ ERROR HANDLING ------------
+subgraph ERR["🛡️ Error Handling Pipeline"]
+CATCH_SPECIFIC["Catch Typed Errors"]
+CATCH_API["Catch Generic APIError"]
+PAYLOAD["Create Structured Error Payload"]
+end
+
+%% ------------ STATE ------------
+subgraph STATE["🧠 Agent State"]
+API_ERRORS["api_errors"]
+VIOLATIONS["violations"]
+DECISION{"Decision Engine"}
+end
+
+BLOCK["🚫 BLOCK"]
+
+%% FLOWS
+SF_CALL --> SIM
+CLM_CALL --> SIM
+NS_CALL --> SIM
+
+SIM --> AUTH
+SIM --> RATE
+SIM --> VAL
+SIM --> SRV
+
+AUTH --> CATCH_SPECIFIC
+RATE --> CATCH_SPECIFIC
+VAL --> CATCH_SPECIFIC
+SRV --> CATCH_SPECIFIC
+
+CATCH_SPECIFIC --> CATCH_API --> PAYLOAD
+
+PAYLOAD --> API_ERRORS
+API_ERRORS --> DECISION
+VIOLATIONS --> DECISION
+
+DECISION -->|api_errors > 0| BLOCK
+
+%% STYLES
+
+classDef infra fill:#f1ecff,stroke:#8b7cf6,stroke-width:2px
+classDef simulator fill:#fff4e5,stroke:#f59e0b,stroke-width:2px
+classDef error fill:#fde8e8,stroke:#e5484d,stroke-width:2px
+classDef handler fill:#e8f0ff,stroke:#5b8def,stroke-width:2px
+classDef state fill:#e6f7ee,stroke:#2e9d69,stroke-width:2px
+classDef decision fill:#fff7db,stroke:#d4a017,stroke-width:2px
+classDef danger fill:#fde8e8,stroke:#e5484d,stroke-width:2px
+
+class SF_CALL,CLM_CALL,NS_CALL infra
+class SIM simulator
+class AUTH,RATE,VAL,SRV error
+class CATCH_SPECIFIC,CATCH_API,PAYLOAD handler
+class API_ERRORS,VIOLATIONS state
+class DECISION decision
+class BLOCK danger
 ```
 
 ### Key Error Handling Features
