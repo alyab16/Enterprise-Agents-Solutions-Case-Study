@@ -513,22 +513,13 @@ When an account is provisioned, the agent automatically creates a **granular onb
 
 ### Task Endpoints
 
-```bash
-# Get all tasks for an account
-GET /demo/tasks/ACME-001
-
-# Get pending tasks (optionally filter by owner)
-GET /demo/tasks/ACME-001/pending?owner=cs_team
-
-# Get overdue tasks (for proactive alerts)
-GET /demo/tasks/ACME-001/overdue
-
-# Get next actionable items
-GET /demo/tasks/ACME-001/next-actions
-
-# Update task status (CS team marks complete)
-PUT /demo/tasks/ACME-001/ACME-001-T005?status=completed&completed_by=john@company.com
-```
+| Method | Endpoint | Description |
+|--------|-----------|-------------|
+| GET | `/demo/tasks/{account_id}` | Retrieve all onboarding tasks for an account |
+| GET | `/demo/tasks/{account_id}/pending?owner={owner}` | Get pending tasks (optionally filter by owner: `cs_team`, `customer`, `system`) |
+| GET | `/demo/tasks/{account_id}/overdue` | Identify overdue tasks for proactive follow-up |
+| GET | `/demo/tasks/{account_id}/next-actions` | Return the next actionable tasks in the workflow |
+| PUT | `/demo/tasks/{account_id}/{task_id}?status=completed&completed_by={email}` | Update task status when completed |
 
 ### Example Task Flow
 
