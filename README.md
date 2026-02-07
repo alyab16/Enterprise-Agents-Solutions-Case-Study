@@ -657,3 +657,5 @@ The following features would enhance the agent for production use:
    - Task checklists with progress bars
    - Overdue alerts and escalation status
    - One-click actions for CS team
+
+7. **MCP and A2A Protocol Integration**: Each integration (Salesforce, CLM, NetSuite, Tasks) could be wrapped in a dedicated [MCP](https://modelcontextprotocol.io/) server, standardizing how the onboarding agent accesses external tools and data through a single protocol. If those MCP servers evolve into autonomous agents with their own decision-making — for example, a Finance Agent that proactively flags credit risk rather than just fetching invoices, or a Compliance Agent that validates data residency requirements before tenant provisioning — then Google's [Agent2Agent (A2A)](https://a2a-protocol.org/) protocol could enable peer-to-peer collaboration between them. MCP handles the agent-to-tool layer, while A2A handles the agent-to-agent layer. This is particularly relevant given that Salesforce, UKG, and Workday are all A2A partners, making future interoperability with their vendor-provided agents a realistic path.
