@@ -1,7 +1,6 @@
 # Production Roadmap
 
-The following enhancements would evolve the onboarding agent from a prototype into a production-grade system. Each section addresses a specific dimension of complexity that enterprise deployments require.
-
+The following enhancements would evolve the onboarding agent from a prototype into a production-grade system. Each section addresses a specific dimension of complexity that enterprise deployments require. This list is not exhaustive, real-world deployments would surface additional scenarios across compliance, data migration, internationalization, multi-tenant isolation, and other domains specific to the business.
 ---
 
 ## Workflow & Notifications
