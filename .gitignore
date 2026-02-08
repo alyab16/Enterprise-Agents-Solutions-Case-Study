@@ -231,3 +231,6 @@ pyproject.toml
 
 .python-version
 solution_design/Solution_Design_Document.synctex.gz
+README.md
+solution_design/Solution_Design_Document.out
+solution_design/Solution_Design_Document.aux

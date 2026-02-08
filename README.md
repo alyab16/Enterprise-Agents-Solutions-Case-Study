@@ -173,7 +173,7 @@ stateDiagram-v2
 
 ## 📦 Installation
 
-### Option 1: Using `uv` (Recommended — Faster)
+### Option 1: Using `uv` (Recommended - Faster)
 
 [`uv`](https://docs.astral.sh/uv/) is a fast Python package installer and environment manager.
 
@@ -656,9 +656,31 @@ The following features would enhance the agent for production use:
 
 5. **Optimized Data Fetching**: Batch API requests (Salesforce Composite API) and concurrent multithreaded calls with bounded retry logic to reduce latency.
 
+#### Invoice & Financial Scenarios
+
+6. **Multi-Currency Invoice Handling**: Support invoices in foreign currencies by validating against NetSuite's [Currency](https://system.netsuite.com/help/helpcenter/en_US/APIs/REST_API_Browser/record/v1/2023.1/index.html#/definitions/currency) and [Invoice](https://system.netsuite.com/help/helpcenter/en_US/APIs/REST_API_Browser/record/v1/2023.1/index.html#/definitions/invoice) objects. The agent would fetch the invoice's currency (`symbol`, `exchangeRate`), convert outstanding amounts to the base currency (CAD) using the exchange rate effective on the invoice date, and flag discrepancies where the rate has shifted significantly since the invoice was issued, thus, alerting Finance to potential forex exposure before provisioning.
+
+7. **Payment Terms & Installment Validation**: NetSuite supports flexible payment [Terms](https://system.netsuite.com/help/helpcenter/en_US/APIs/REST_API_Browser/record/v1/2023.1/index.html#/definitions/term) (Net 30, Net 60, date-driven, early payment discounts) and [installment-based](https://system.netsuite.com/help/helpcenter/en_US/APIs/REST_API_Browser/record/v1/2023.1/index.html#/definitions/invoice-installmentElement) billing where the total is split across multiple scheduled payments. The agent would validate the term structure (`daysUntilNetDue`, `recurrenceCount`, `splitEvenly`) and check each installment element (`amount`, `amountDue`, `dueDate`) individually rather than treating the invoice as a single payment. This enables more nuanced decisions. For example, an ESCALATE if only the first installment is overdue versus a BLOCK if multiple installments are missed.
+
+8. **Early Payment Discount Detection**: NetSuite Terms support early payment discounts (`discountPercent`, `daysUntilExpiry`). If the customer's invoice is within the discount window, the agent would add a note to the CS team's report highlighting the opportunity (e.g., "Customer is eligible for a 2% discount if payment is received within 5 days. Consider mentioning during kickoff call.") This turns the agent into a revenue-aware assistant, not just a blocker/escalator/approver.
+
+9. **Credit Memo & Partial Payment Reconciliation**: In production, invoices rarely exist in isolation. A customer may have partial payments applied, outstanding credit memos from a previous billing dispute, or unapplied deposits. The agent would reconcile the invoice's `amountRemaining` against any linked credit memos and deposits to calculate the true outstanding balance. This prevents false escalations. For example, an invoice showing $25,000 outstanding shouldn't trigger an overdue warning if a $20,000 credit memo is pending application by the Finance team.
+
+10. **Multi-Invoice Account Validation**: Enterprise customers often have multiple invoices at different stages, one paid, one current, one overdue from a previous contract period. Rather than checking a single invoice, the agent would fetch all open invoices for the account and apply tiered logic:
+    ```
+    All invoices paid         → PROCEED (no financial risk)
+    Current invoices only     → PROCEED with note to CS
+    One overdue < 30 days     → ESCALATE (warning to CS, recommend follow-up)
+    One overdue > 30 days     → ESCALATE (urgent, notify Finance)
+    Multiple overdue invoices → BLOCK (systemic payment issue, require Finance approval)
+    Total overdue > contract value → BLOCK (high exposure, escalate to Finance Director)
+    ```
+
+11. **Revenue Recognition & Contract Value Alignment**: Cross-validate the invoice total against the Salesforce Opportunity `Amount` and the CLM contract value. If the invoice total exceeds the contracted amount, potentially indicating a billing error or unapproved scope change, the agent would ESCALATE to both Finance and the Account Owner. Conversely, if the invoice is significantly below the contract value, it may indicate a missing invoice or phased billing that hasn't been fully set up, warranting a warning to Revenue Operations.
+
 #### Frontend & Observability
 
-6. **Real-Time Dashboard**: React frontend showing:
+12. **Real-Time Dashboard**: React frontend showing:
    - Active onboardings with status
    - Task checklists with progress bars
    - Overdue alerts and escalation status
@@ -666,4 +688,4 @@ The following features would enhance the agent for production use:
 
 #### Multi-Agent Architecture
 
-7. **MCP and A2A Protocol Integration**: Each integration (Salesforce, CLM, NetSuite, Tasks) could be wrapped in a dedicated [MCP](https://modelcontextprotocol.io/) server, standardizing how the onboarding agent accesses external tools and data through a single protocol. If those MCP servers evolve into autonomous agents with their own decision-making. For example, a Finance Agent that proactively flags credit risk rather than just fetching invoices, or a Compliance Agent that validates data residency requirements before tenant provisioning. Then Google's [Agent2Agent (A2A)](https://a2a-protocol.org/) protocol could enable peer-to-peer collaboration between them. MCP handles the agent-to-tool layer, while A2A handles the agent-to-agent layer.
+13. **MCP and A2A Protocol Integration**: Each integration (Salesforce, CLM, NetSuite, Tasks) could be wrapped in a dedicated [MCP](https://modelcontextprotocol.io/) server, standardizing how the onboarding agent accesses external tools and data through a single protocol. If those MCP servers evolve into autonomous agents with their own decision-making. For example, a Finance Agent that proactively flags credit risk rather than just fetching invoices, or a Compliance Agent that validates data residency requirements before tenant provisioning. Then Google's [Agent2Agent (A2A)](https://a2a-protocol.org/) protocol could enable peer-to-peer collaboration between them. MCP handles the agent-to-tool layer, while A2A handles the agent-to-agent layer.
