@@ -635,7 +635,7 @@ For detailed production enhancements (18 items with implementation details, Sale
 |----------|:---:|-------|
 | **Workflow & Notifications** | 3 | Task monitoring, escalation hierarchy, approval workflows |
 | **Event-Driven Integration** | 2 | Webhook-based task completion, optimized batch fetching |
-| **Salesforce & CRM Complexity** | 5 | Account hierarchies, multi-opportunity handling, owner validation, stale deal detection |
-| **Invoice & Financial Complexity** | 6 | Multi-currency, installments, credit memos, payment discounts, cross-system reconciliation |
+| **Salesforce & CRM Scenarios** | 5 | Account hierarchies, multi-opportunity handling, owner validation, stale deal detection |
+| **Invoice & Financial Scenarios** | 6 | Multi-currency, installments, credit memos, payment discounts, cross-system reconciliation |
 | **Frontend & Observability** | 1 | Real-time CS dashboard |
 | **Multi-Agent Architecture** | 1 | MCP server integration with A2A protocol for agent-to-agent collaboration |
