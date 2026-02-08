@@ -681,10 +681,10 @@ The following features would enhance the agent for production use:
 #### Frontend & Observability
 
 12. **Real-Time Dashboard**: React frontend showing:
-   - Active onboardings with status
-   - Task checklists with progress bars
-   - Overdue alerts and escalation status
-   - One-click actions for CS team
+     - Active onboardings with status
+     - Task checklists with progress bars
+     - Overdue alerts and escalation status
+     - One-click actions for CS team
 
 #### Multi-Agent Architecture
 
