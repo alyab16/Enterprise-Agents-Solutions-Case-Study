@@ -629,7 +629,7 @@ The following features would enhance the agent for production use:
 
 ### Suggested Enhancements
 
-For detailed production enhancements (18 items with implementation details, Salesforce/NetSuite API references, and decision logic), see the **[Production Roadmap](production_roadmap/)**.
+For detailed production enhancements (20 items with implementation ideas, Salesforce/NetSuite API references, and decision logic), see the **[Production Roadmap](production_roadmap/)**.
 
 | Category | Enhancements | Focus |
 |----------|:---:|-------|
@@ -638,4 +638,5 @@ For detailed production enhancements (18 items with implementation details, Sale
 | **Salesforce & CRM Scenarios** | 5 | Account hierarchies, multi-opportunity handling, owner validation, stale deal detection |
 | **Invoice & Financial Scenarios** | 6 | Multi-currency, installments, credit memos, payment discounts, cross-system reconciliation |
 | **Frontend & Observability** | 1 | Real-time CS dashboard |
+| **LLM Resilience & Multi-Model Fallback** | 2 | Secondary LLM providers, unified gateway via LiteLLM |
 | **Multi-Agent Architecture** | 1 | MCP server integration with A2A protocol for agent-to-agent collaboration |
