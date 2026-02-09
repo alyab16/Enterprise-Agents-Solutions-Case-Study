@@ -10,7 +10,7 @@
 \usepackage{graphicx}
 \usepackage{float}
 \usepackage{multicol}
-
+\usepackage{ragged2e}
 % Tight spacing
 \setlength{\parskip}{0.08em}
 \setlength{\parindent}{0pt}
@@ -279,12 +279,12 @@ Server Error & 500 & \texttt{SERVER\_ERROR} & Support Team & Check status page, 
 \subsection{Key Trade-offs}
 \begin{table}[H]
 \scriptsize
-\begin{tabularx}{\textwidth}{@{}lX@{}}
+\begin{tabularx}{\textwidth}{@{}l>{\RaggedRight\arraybackslash}X@{}}
 \toprule
 \textbf{Decision} & \textbf{Trade-off} \\
 \midrule
 API Errors $\rightarrow$ BLOCK & Integrity over speed \\
-Sync Processing & Simple but slow \\
+Sequential Data Fetching & Clearer failure tracing but has higher latency \\
 Rule-based Fallback & Less smart but reliable \\
 14 Fixed Tasks & Predictable but rigid \\
 LLM Advisory Only & Auditable but less adaptive \\
