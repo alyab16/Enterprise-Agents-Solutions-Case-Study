@@ -361,7 +361,7 @@ The system includes 5 pre-configured demo scenarios validating all decision path
 %==============================================================================
 % SECTION E: MCP COLLABORATION (PROPOSED)
 %==============================================================================
-\section{Multi-Agent Collaboration via Model Context Protocol (MCP) \textit{--- Proposed Extension}}
+\section{Multi-Agent Architecture via Model Context Protocol (MCP) Server Connections \textit{--- Proposed Extension}}
 
 \begin{minipage}[t]{0.54\textwidth}
 \vspace{0pt}
@@ -387,8 +387,8 @@ Task Monitor & Detects overdue onboarding tasks (\texttt{tasks.get\_overdue}) \\
 \end{tabularx}
 \end{table}
 
-\vspace{-0.3em}
-{\scriptsize\textbf{Benefits}: Clear domain ownership $\bullet$ Shared integrations $\bullet$ Scalable agent complexity $\bullet$ Cross-agent context sharing.}
+\vspace{-15pt}
+{\scriptsize\textbf{Benefits}: Independent versioning per integration $\bullet$ Clear domain ownership $\bullet$ Centralized access control and audit logging $\bullet$ Scalable agent complexity $\bullet$ Cross-agent context sharing.}
 
 \vspace{0.35em}
 {\scriptsize
@@ -407,12 +407,14 @@ Concurrency limits, rate limiting, and circuit breakers would be enforced at the
 \end{figure}
 \end{minipage}
 
-\vspace{15pt}
+\vspace{10pt}
 %==============================================================================
 % SECTION F: PRODUCTION Considerations
 %==============================================================================
 \section{Production Considerations}
-\noindent{\scriptsize\textit{For additional production enhancements, see the \textbf{\texttt{production\_roadmap}} directory in the repository.}}
+\noindent{\scriptsize\textit{For additional production enhancements, see the 
+\textbf{\href{https://github.com/alyab16/Enterprise-Agents-Solutions-Case-Study/tree/main/production_roadmap}{\texttt{production\_roadmap}}} 
+directory in the repository.}}
 
 %-------------------------------
 % Infrastructure Layer
@@ -480,7 +482,7 @@ Concurrency limits, rate limiting, and circuit breakers would be enforced at the
 \textbf{LLM Data Governance \& Security}: All data sent to LLMs is explicitly field-filtered and sanitized to prevent leakage of sensitive information. PII is masked prior to inference, and external system credentials are never exposed beyond their integration boundaries. Trust boundaries between systems are strictly enforced at the API layer.
 
 \vspace{0.35em}
-\textbf{Multi-Agent Interoperability}: As described in Section 5, wrapping integrations behind MCP servers cleanly separates agent logic from external system access, enabling independent versioning, access control, and audit logging.
+\textbf{Multi-Agent Interoperability}: As described in Section 5, wrapping integrations behind MCP servers cleanly separates agent logic from external system access, enabling independent versioning, access control, and audit logging. If these MCP servers evolve into autonomous agents, the A2A protocol provides a standardized layer for agent-to-agent collaboration without exposing internal state or tools across boundaries.
 
 \begin{center}
 \textcolor{secondary}{\scriptsize Enterprise Onboarding Agent | StackAdapt Case Study | Full source code and documentation in attached repository}
