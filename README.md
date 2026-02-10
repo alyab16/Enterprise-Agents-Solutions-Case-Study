@@ -298,20 +298,6 @@ uvicorn main:app --reload
 
 ---
 
-## 🧪 Optional: Standalone Demo Script
-
-The standalone demo script can be used to exercise agent logic **without starting an API server**.
-
-```bash
-python demo_standalone.py
-```
-
-This script is optional and intended for:
-- Local testing
-- Agent behavior exploration
-- Debugging without running FastAPI
----
-
 ## 📋 Demo Scenarios
 
 ### Normal Scenarios
@@ -540,10 +526,9 @@ When an account is provisioned, the agent automatically creates a **granular onb
 
 ```
 Enterprise-Agents-Solutions-Case-Study/
-├── main.py                          # FastAPI application
-├── demo_standalone.py               # Standalone demo script
+├── main.py                               # FastAPI application
 │
-├── solution_design/        # Architecture & technical design assets
+├── solution_design/                      # Architecture & technical design assets
 │   ├── 01_architecture.png
 │   ├── 02_decision.png
 │   ├── 03_mcp_architecture.png
@@ -551,35 +536,35 @@ Enterprise-Agents-Solutions-Case-Study/
 │   ├── Solution_Design_Document.tex
 │   └── Solution_Design_Document.pdf
 │
-├── reports_output/                  # Generated reports directory
-├── logs/                           # Runtime logs
+├── reports_output/                       # Generated reports directory
+├── logs/                                 # Runtime logs
 │
 └── app/
-    ├── agent/                      # LangGraph workflow
-    │   ├── graph.py                # Workflow definition
-    │   ├── nodes.py                # Processing steps
-    │   ├── router.py               # Decision routing
-    │   ├── state.py                # State definition
-    │   ├── state_utils.py          # State manipulation utilities
-    │   └── invariants/             # Business rules
+    ├── agent/                            # LangGraph workflow
+    │   ├── graph.py                      # Workflow definition
+    │   ├── nodes.py                      # Processing steps
+    │   ├── router.py                     # Decision routing
+    │   ├── state.py                      # State definition
+    │   ├── state_utils.py                # State manipulation utilities
+    │   └── invariants/                   # Business rules
     │
-    ├── api/                        # REST endpoints
-    │   ├── demo.py                 # Demo endpoints with error simulation
-    │   └── webhook.py              # Webhook handlers
+    ├── api/                              # REST endpoints
+    │   ├── demo.py                       # Demo endpoints with error simulation
+    │   └── webhook.py                    # Webhook handlers
     │
-    ├── integrations/               # Mock API clients
+    ├── integrations/                     # Mock API clients
     │   ├── salesforce.py
     │   ├── clm.py
     │   ├── netsuite.py
     │   ├── provisioning.py
     │   └── api_errors.py
     │
-    ├── llm/                        # LLM integration
+    ├── llm/                              # LLM integration
     │   └── risk_analyzer.py
     │
-    ├── notifications/              # Slack / Email
-    ├── reports/                    # Report generation
-    └── logging/                    # Structured logging
+    ├── notifications/                    # Slack / Email
+    ├── reports/                          # Report generation
+    └── logging/                          # Structured logging
 ```
 
 ## 🔒 Security Patterns Demonstrated
