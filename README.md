@@ -19,7 +19,7 @@ This agent automates the customer journey from **Sales → Contract → Invoice 
 
 Watch the full solution walkthrough here:
 
-👉 **[View Demo Video](https://drive.google.com/file/d/1m-0gMy5IV1vH42WWg4bLWKed_17RzZn-/view)**
+👉 **[View Demo Video](https://drive.google.com/file/d/1-ztLnzh89_dahqyzBxzX045lJkn83hNs/view?usp=sharing)**
 
 
 ## 🏗️ Architecture
