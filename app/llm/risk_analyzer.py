@@ -1,194 +1,31 @@
 """
-LLM-powered risk analysis for onboarding.
-Generates human-readable explanations and recommended actions.
+Rule-based risk analysis fallback.
+
+In the new Pydantic AI architecture, the agent itself performs risk analysis
+as part of its reasoning. This module provides a rule-based fallback for
+the debug endpoint and report generation when the agent is not involved.
 """
 
 import json
-import os
-from typing import Optional
-from app.logging.logger import log_event
-
-# Try to import OpenAI, but handle gracefully if not available
-try:
-    from openai import OpenAI
-    OPENAI_AVAILABLE = True
-except ImportError:
-    OPENAI_AVAILABLE = False
-    OpenAI = None
-
-
-RISK_ANALYSIS_SYSTEM_PROMPT = """You are an AI assistant helping Customer Success teams understand onboarding issues.
-
-Your job is to analyze the current state of a customer onboarding and provide:
-1. A clear, human-readable summary of the situation
-2. Identification of risks and their business impact
-3. Specific, actionable recommendations
-
-Be concise but thorough. Use business language, not technical jargon.
-Format your response as JSON with the following structure:
-{
-    "summary": "Brief 1-2 sentence overview of the onboarding status",
-    "risk_level": "low|medium|high|critical",
-    "risks": [
-        {
-            "issue": "What the problem is",
-            "impact": "Business impact of this issue",
-            "urgency": "low|medium|high"
-        }
-    ],
-    "recommended_actions": [
-        {
-            "action": "Specific action to take",
-            "owner": "Who should do this (CS, Finance, Legal, etc.)",
-            "priority": 1
-        }
-    ],
-    "estimated_resolution_time": "Time estimate to resolve all issues",
-    "can_proceed_with_warnings": true/false
-}"""
-
-
-def analyze_risks(state: dict) -> dict:
-    """
-    Use LLM to analyze the current onboarding state and generate
-    human-readable risk assessment and recommendations.
-    """
-    # Build context for the LLM
-    context = _build_analysis_context(state)
-    
-    # Try LLM analysis first
-    api_key = os.getenv("OPENAI_API_KEY")
-    if api_key and OPENAI_AVAILABLE:
-        try:
-            return _llm_analyze(context, state)
-        except Exception as e:
-            log_event("llm.risk_analysis.error", error=str(e))
-    
-    # Fallback to rule-based analysis
-    return _rule_based_analyze(state)
-
-
-def _build_analysis_context(state: dict) -> str:
-    """Build a context string for the LLM."""
-    
-    sections = []
-    
-    # Account info
-    account = state.get("account")
-    if account:
-        sections.append(f"""ACCOUNT:
-- Name: {account.get('Name', 'Unknown')}
-- Industry: {account.get('Industry', 'Not specified')}
-- Country: {account.get('BillingCountry', 'Not specified')}""")
-    else:
-        sections.append("ACCOUNT: Missing")
-    
-    # Opportunity info
-    opportunity = state.get("opportunity")
-    if opportunity:
-        sections.append(f"""OPPORTUNITY:
-- Stage: {opportunity.get('StageName', 'Unknown')}
-- Amount: ${opportunity.get('Amount', 0):,.2f}
-- Close Date: {opportunity.get('CloseDate', 'Unknown')}""")
-    else:
-        sections.append("OPPORTUNITY: Missing")
-    
-    # Contract info
-    contract = state.get("contract")
-    if contract:
-        sections.append(f"""CONTRACT:
-- Status: {contract.get('Status', 'Unknown')}
-- Start Date: {contract.get('StartDate', 'Unknown')}
-- Has Owner: {'Yes' if contract.get('OwnerId') else 'No'}""")
-    else:
-        sections.append("CONTRACT: Missing")
-    
-    # Invoice info
-    invoice = state.get("invoice")
-    if invoice:
-        sections.append(f"""INVOICE:
-- Status: {invoice.get('status', 'Unknown')}
-- Amount: ${invoice.get('amount', 0):,.2f}
-- Due Date: {invoice.get('due_date', 'Unknown')}""")
-    else:
-        sections.append("INVOICE: Not found")
-    
-    # Violations and warnings
-    violations = state.get("violations", {})
-    warnings = state.get("warnings", {})
-    api_errors = state.get("api_errors", [])
-    
-    # API errors (critical - blocking)
-    if api_errors:
-        api_error_list = []
-        for error in api_errors:
-            system = error.get("system", "api")
-            error_type = error.get("error_type", "unknown")
-            message = error.get("message", "Unknown error")
-            error_code = error.get("error_code", "UNKNOWN")
-            api_error_list.append(f"- [{system}] {error_type}: {message} (Code: {error_code})")
-        sections.append(f"""API ERRORS (CRITICAL - BLOCKING):
-{chr(10).join(api_error_list)}""")
-    
-    if violations:
-        violation_list = []
-        for domain, msgs in violations.items():
-            for msg in msgs:
-                violation_list.append(f"- [{domain}] {msg}")
-        sections.append(f"""BLOCKING VIOLATIONS:
-{chr(10).join(violation_list)}""")
-    
-    if warnings:
-        warning_list = []
-        for domain, msgs in warnings.items():
-            for msg in msgs:
-                warning_list.append(f"- [{domain}] {msg}")
-        sections.append(f"""WARNINGS:
-{chr(10).join(warning_list)}""")
-    
-    return "\n\n".join(sections)
-
-
-def _llm_analyze(context: str, state: dict) -> dict:
-    """Use OpenAI to analyze risks."""
-    
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    
-    response = client.chat.completions.create(
-        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-        messages=[
-            {"role": "system", "content": RISK_ANALYSIS_SYSTEM_PROMPT},
-            {"role": "user", "content": f"Analyze this onboarding state:\n\n{context}"}
-        ],
-        temperature=0.3,
-        response_format={"type": "json_object"},
-    )
-    
-    result = json.loads(response.choices[0].message.content)
-    
-    log_event(
-        "llm.risk_analysis.success",
-        account_id=state.get("account_id"),
-        risk_level=result.get("risk_level"),
-    )
-    
-    return result
+from typing import Dict, List, Any, Optional
 
 
 def _rule_based_analyze(state: dict) -> dict:
     """
-    Fallback rule-based risk analysis when LLM is unavailable.
+    Rule-based risk analysis.
+
+    Used by the debug endpoint for testing validation logic without
+    invoking the full agent.
     """
     violations = state.get("violations", {})
     warnings = state.get("warnings", {})
     api_errors = state.get("api_errors", [])
-    
-    # Count issues
+
     violation_count = sum(len(msgs) for msgs in violations.values())
     warning_count = sum(len(msgs) for msgs in warnings.values())
     api_error_count = len(api_errors)
-    
-    # Determine risk level - API errors are always critical
+
+    # Determine risk level
     if api_error_count > 0:
         risk_level = "critical"
     elif violation_count > 0:
@@ -199,45 +36,41 @@ def _rule_based_analyze(state: dict) -> dict:
         risk_level = "low"
     else:
         risk_level = "low"
-    
+
     # Build risks list
     risks = []
-    
-    # Add API errors to risks
+
     for error in api_errors:
         system = error.get("system", "api")
         error_type = error.get("error_type", "unknown")
         message = error.get("message", "API error occurred")
-        error_code = error.get("error_code", "UNKNOWN")
-        
         risks.append({
             "issue": f"{system.title()} API {error_type.replace('_', ' ').title()} Error: {message}",
             "impact": f"Cannot fetch required data from {system.title()} - onboarding blocked",
             "urgency": "critical"
         })
-    
-    # Check for specific patterns
+
     if "account" in violations:
         risks.append({
             "issue": "Account data is missing or invalid",
             "impact": "Cannot identify the customer or their requirements",
             "urgency": "high"
         })
-    
+
     if "contract" in violations:
         risks.append({
             "issue": "Contract issues detected",
             "impact": "Legal agreement not in place - cannot proceed with provisioning",
             "urgency": "high"
         })
-    
+
     if "opportunity" in violations:
         risks.append({
             "issue": "Opportunity not in Closed Won status",
             "impact": "Deal may not be finalized - premature onboarding risk",
             "urgency": "high"
         })
-    
+
     if "invoice" in warnings:
         invoice = state.get("invoice") or {}
         if invoice.get("status") == "OVERDUE":
@@ -246,46 +79,24 @@ def _rule_based_analyze(state: dict) -> dict:
                 "impact": "Payment not received - may need finance escalation",
                 "urgency": "high"
             })
-        elif invoice.get("status") == "PENDING":
-            risks.append({
-                "issue": "Invoice pending payment",
-                "impact": "Provisioning may need to wait for payment",
-                "urgency": "medium"
-            })
-    
-    if "contract" in warnings:
-        contract = state.get("contract") or state.get("clm") or {}
-        if contract.get("Status") == "Draft" or contract.get("status") == "DRAFT":
-            risks.append({
-                "issue": "Contract still in draft status",
-                "impact": "Contract not yet sent for signature",
-                "urgency": "medium"
-            })
-    
+
     # Build recommended actions
     recommended_actions = []
     priority = 1
-    
-    # Add API error recommendations first (highest priority)
+
     for error in api_errors:
         system = error.get("system", "api")
         error_type = error.get("error_type", "unknown")
         if error_type == "authentication":
             recommended_actions.append({
-                "action": f"Re-authenticate with {system.title()} - session expired or credentials invalid",
+                "action": f"Re-authenticate with {system.title()}",
                 "owner": "IT/DevOps",
                 "priority": priority
             })
         elif error_type == "authorization":
             recommended_actions.append({
-                "action": f"Check {system.title()} API permissions - access denied",
+                "action": f"Check {system.title()} API permissions",
                 "owner": "IT/DevOps",
-                "priority": priority
-            })
-        elif error_type == "rate_limit":
-            recommended_actions.append({
-                "action": f"Wait and retry {system.title()} API call - rate limit exceeded",
-                "owner": "System",
                 "priority": priority
             })
         else:
@@ -295,7 +106,7 @@ def _rule_based_analyze(state: dict) -> dict:
                 "priority": priority
             })
         priority += 1
-    
+
     if "account" in violations:
         recommended_actions.append({
             "action": "Verify account exists in Salesforce and has required fields",
@@ -303,7 +114,7 @@ def _rule_based_analyze(state: dict) -> dict:
             "priority": priority
         })
         priority += 1
-    
+
     if "contract" in violations or "contract" in warnings:
         recommended_actions.append({
             "action": "Review contract status and expedite signature if needed",
@@ -311,44 +122,34 @@ def _rule_based_analyze(state: dict) -> dict:
             "priority": priority
         })
         priority += 1
-    
-    if "invoice" in warnings:
-        invoice = state.get("invoice") or {}
-        if invoice.get("status") in ["OVERDUE", "PENDING"]:
-            recommended_actions.append({
-                "action": "Follow up on invoice payment status",
-                "owner": "Finance",
-                "priority": priority
-            })
-            priority += 1
-    
+
     if not recommended_actions and warning_count > 0:
         recommended_actions.append({
             "action": "Review warnings and confirm acceptable to proceed",
             "owner": "Customer Success",
             "priority": 1
         })
-    
+
     if violation_count == 0 and warning_count == 0 and api_error_count == 0:
         recommended_actions.append({
             "action": "Proceed with automated provisioning",
             "owner": "System",
             "priority": 1
         })
-    
+
     # Build summary
     account = state.get("account") or {}
     account_name = account.get("Name", "Unknown Account")
-    
+
     if api_error_count > 0:
-        summary = f"Onboarding for {account_name} is BLOCKED due to {api_error_count} API error(s). System integration issues must be resolved."
+        summary = f"Onboarding for {account_name} is BLOCKED due to {api_error_count} API error(s)."
     elif violation_count > 0:
-        summary = f"Onboarding for {account_name} is BLOCKED due to {violation_count} critical issue(s) that must be resolved."
+        summary = f"Onboarding for {account_name} is BLOCKED due to {violation_count} critical issue(s)."
     elif warning_count > 0:
-        summary = f"Onboarding for {account_name} can proceed with caution. {warning_count} warning(s) identified for review."
+        summary = f"Onboarding for {account_name} can proceed with caution. {warning_count} warning(s) identified."
     else:
         summary = f"Onboarding for {account_name} is ready to proceed. All checks passed."
-    
+
     return {
         "summary": summary,
         "risk_level": risk_level,
@@ -360,14 +161,13 @@ def _rule_based_analyze(state: dict) -> dict:
 
 
 def _estimate_resolution_time(violations: dict, warnings: dict, api_errors: list = None) -> str:
-    """Estimate time to resolve issues."""
     api_errors = api_errors or []
     violation_count = sum(len(msgs) for msgs in violations.values())
     warning_count = sum(len(msgs) for msgs in warnings.values())
     api_error_count = len(api_errors)
-    
+
     if api_error_count > 0:
-        return "Variable - depends on API issue resolution (may be immediate retry or require IT intervention)"
+        return "Variable - depends on API issue resolution"
     elif violation_count == 0 and warning_count == 0:
         return "Immediate - ready to provision"
     elif violation_count == 0:
@@ -379,44 +179,32 @@ def _estimate_resolution_time(violations: dict, warnings: dict, api_errors: list
 
 
 def generate_summary(state: dict) -> str:
-    """
-    Generate a human-readable summary of the onboarding state.
-    Uses LLM if available, otherwise falls back to template.
-    """
+    """Generate a human-readable summary from state."""
     risk_analysis = state.get("risk_analysis", {})
-    
     if risk_analysis:
         return risk_analysis.get("summary", _fallback_summary(state))
-    
     return _fallback_summary(state)
 
 
 def _fallback_summary(state: dict) -> str:
-    """Generate a simple template-based summary."""
     account = state.get("account") or {}
     account_name = account.get("Name", state.get("account_id", "Unknown"))
-    stage = state.get("stage", "unknown")
     decision = state.get("decision", "PENDING")
-    
+
     violations = state.get("violations", {})
     warnings = state.get("warnings", {})
     api_errors = state.get("api_errors", [])
-    
+
     violation_count = sum(len(msgs) for msgs in violations.values())
     warning_count = sum(len(msgs) for msgs in warnings.values())
     api_error_count = len(api_errors)
-    
+
     lines = [
         f"Onboarding Status for {account_name}",
-        f"Stage: {stage}",
         f"Decision: {decision}",
         f"Violations: {violation_count}",
         f"Warnings: {warning_count}",
         f"API Errors: {api_error_count}",
     ]
-    
-    actions = state.get("actions_taken", [])
-    if actions:
-        lines.append(f"Actions Taken: {len(actions)}")
-    
+
     return "\n".join(lines)

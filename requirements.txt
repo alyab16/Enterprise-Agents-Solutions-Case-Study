@@ -3,10 +3,9 @@ fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
 pydantic>=2.5.0
 
-# LangGraph for agent orchestration
-langgraph>=0.0.40
-langchain>=0.1.0
-langchain-core>=0.1.0
+# Agent orchestration (Pydantic AI + MCP)
+pydantic-ai[openai]>=0.1.0
+fastmcp>=2.0.0
 
 # OpenAI for LLM
 openai>=1.10.0
@@ -18,6 +17,11 @@ python-dotenv>=1.0.0
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
 httpx>=0.26.0
+
+# Tracing / Observability
+logfire>=3.0.0
+langsmith>=0.7.0
+opentelemetry-exporter-otlp>=1.20.0
 
 # Optional: for better logging
 rich>=13.0.0

@@ -1,6 +1,9 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+from app.tracing import setup_tracing
+setup_tracing()
+
 from fastapi import FastAPI
 from app.api.webhook import router as webhook_router
 from app.api.demo import router as demo_router
