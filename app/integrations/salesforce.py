@@ -126,6 +126,46 @@ MOCK_ACCOUNTS = {
             "url": "/services/data/v59.0/sobjects/Account/0018Z00003DELTAQ"
         }
     },
+    "FOREX-005": {
+        "Id": "0018Z00003FOREXQ",
+        "Name": "Maple Payments Inc.",
+        "BillingCountry": "Canada",
+        "BillingCity": "Toronto",
+        "BillingState": "ON",
+        "BillingStreet": "200 Bay Street",
+        "BillingPostalCode": "M5J 2J5",
+        "Industry": "Fintech",
+        "OwnerId": "0058Z000001OWNER",
+        "Type": "Customer",
+        "NumberOfEmployees": 120,
+        "AnnualRevenue": 15000000,
+        "Website": "https://maplepayments.ca",
+        "IsDeleted": False,
+        "attributes": {
+            "type": "Account",
+            "url": "/services/data/v59.0/sobjects/Account/0018Z00003FOREXQ"
+        }
+    },
+    "PARTIAL-006": {
+        "Id": "0018Z00003PARTLQ",
+        "Name": "Summit Cloud Solutions",
+        "BillingCountry": "United States",
+        "BillingCity": "Austin",
+        "BillingState": "TX",
+        "BillingStreet": "500 Congress Ave",
+        "BillingPostalCode": "78701",
+        "Industry": "Technology",
+        "OwnerId": "0058Z000001OWNER",
+        "Type": "Customer",
+        "NumberOfEmployees": 350,
+        "AnnualRevenue": 45000000,
+        "Website": "https://summitcloud.io",
+        "IsDeleted": False,
+        "attributes": {
+            "type": "Account",
+            "url": "/services/data/v59.0/sobjects/Account/0018Z00003PARTLQ"
+        }
+    },
     # Special error simulation accounts
     "AUTH-ERROR": {
         "_simulate_error": "authentication",
@@ -225,6 +265,44 @@ MOCK_OPPORTUNITIES = {
             "url": "/services/data/v59.0/sobjects/Opportunity/0068Z000001OPPGAMMA"
         }
     },
+    "OPP-FOREX-005": {
+        "Id": "0068Z000001OPPFOREX",
+        "Name": "Maple Payments - Growth Plan",
+        "AccountId": "0018Z00003FOREXQ",
+        "StageName": "Closed Won",
+        "Amount": 100000.00,
+        "CloseDate": "2024-03-15",
+        "OwnerId": "0058Z000001OWNER",
+        "ContractId": "8008Z000000FOREX",
+        "IsClosed": True,
+        "IsWon": True,
+        "Probability": 100,
+        "Type": "New Business",
+        "LeadSource": "Partner Referral",
+        "attributes": {
+            "type": "Opportunity",
+            "url": "/services/data/v59.0/sobjects/Opportunity/0068Z000001OPPFOREX"
+        }
+    },
+    "OPP-PARTIAL-006": {
+        "Id": "0068Z000001OPPPARTL",
+        "Name": "Summit Cloud - Enterprise Deal",
+        "AccountId": "0018Z00003PARTLQ",
+        "StageName": "Closed Won",
+        "Amount": 200000.00,
+        "CloseDate": "2024-02-28",
+        "OwnerId": "0058Z000001OWNER",
+        "ContractId": "8008Z000000PARTL",
+        "IsClosed": True,
+        "IsWon": True,
+        "Probability": 100,
+        "Type": "New Business",
+        "LeadSource": "Website",
+        "attributes": {
+            "type": "Opportunity",
+            "url": "/services/data/v59.0/sobjects/Opportunity/0068Z000001OPPPARTL"
+        }
+    },
 }
 
 MOCK_CONTRACTS = {
@@ -268,6 +346,40 @@ MOCK_CONTRACTS = {
         "attributes": {
             "type": "Contract",
             "url": "/services/data/v59.0/sobjects/Contract/CONTRACT-PENDING"
+        }
+    },
+    "8008Z000000FOREX": {
+        "Id": "8008Z000000FOREX",
+        "ContractNumber": "00000126",
+        "AccountId": "0018Z00003FOREXQ",
+        "OwnerId": "0058Z000001OWNER",
+        "Status": "Activated",
+        "StartDate": "2024-03-01",
+        "EndDate": "2025-02-28",
+        "ActivatedDate": "2024-03-01T10:00:00.000+0000",
+        "CustomerSignedDate": "2024-02-25",
+        "CompanySignedDate": "2024-02-26",
+        "ContractTerm": 12,
+        "attributes": {
+            "type": "Contract",
+            "url": "/services/data/v59.0/sobjects/Contract/8008Z000000FOREX"
+        }
+    },
+    "8008Z000000PARTL": {
+        "Id": "8008Z000000PARTL",
+        "ContractNumber": "00000127",
+        "AccountId": "0018Z00003PARTLQ",
+        "OwnerId": "0058Z000001OWNER",
+        "Status": "Activated",
+        "StartDate": "2024-03-01",
+        "EndDate": "2025-02-28",
+        "ActivatedDate": "2024-03-01T10:00:00.000+0000",
+        "CustomerSignedDate": "2024-02-20",
+        "CompanySignedDate": "2024-02-21",
+        "ContractTerm": 12,
+        "attributes": {
+            "type": "Contract",
+            "url": "/services/data/v59.0/sobjects/Contract/8008Z000000PARTL"
         }
     },
 }

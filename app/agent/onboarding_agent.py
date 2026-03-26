@@ -78,6 +78,8 @@ system, and a business rule validation engine. Use them as follows:
    d) Call `fetch_salesforce_contract` (no args needed)
    e) Call `fetch_clm_contract` (no args needed)
    f) Call `fetch_netsuite_invoice` (no args needed)
+   g) Optionally call `convert_currency` to convert invoice amounts to CAD
+      (StackAdapt is a Canadian company — CAD context is useful)
 
    Steps b-f can be called in parallel after step a completes.
 
@@ -89,9 +91,13 @@ system, and a business rule validation engine. Use them as follows:
    or similar error status (AUTH_ERROR, SERVER_ERROR, etc.), record it
    as an API error. API errors are BLOCKING — they prevent onboarding.
 
-2. **VALIDATE** — Once data is gathered, call `validate_business_rules`
-   with NO arguments. It automatically uses the data collected by the
-   fetch tools. Returns violations (blocking) and warnings (non-blocking).
+2. **VALIDATE** — Once data is gathered:
+   a) Call `validate_business_rules` with NO arguments. It automatically
+      uses the data collected by the fetch tools. Returns violations
+      (blocking) and warnings (non-blocking).
+   b) Call `check_financial_alignment` with NO arguments. It compares the
+      opportunity deal value against the invoice total (converting currencies
+      if needed) and checks for underpayment gaps. Uses a 2% threshold.
 
 3. **DECIDE** — Based on the results:
    - **BLOCK** if there are ANY api_errors OR ANY violations
@@ -558,3 +564,160 @@ async def send_email(
         account_id=ctx.deps.account_id,
         correlation_id=ctx.deps.correlation_id,
     )
+
+
+# ---------------------------------------------------------------------------
+# Currency tools
+# ---------------------------------------------------------------------------
+
+@onboarding_agent.tool
+async def convert_currency(
+    ctx: RunContext[OnboardingDeps],
+    amount: float,
+    from_currency: str,
+    to_currency: str,
+) -> dict:
+    """
+    Convert a monetary amount between currencies using live exchange rates.
+
+    Useful for converting USD invoice totals to CAD (StackAdapt's home
+    currency). Uses the European Central Bank's published rates via the
+    Frankfurter API — no API key required.
+
+    Args:
+        amount: The monetary amount to convert.
+        from_currency: Source currency code (e.g. "USD").
+        to_currency: Target currency code (e.g. "CAD").
+    """
+    from app.integrations import currency
+
+    log_event(
+        "tool.currency.convert",
+        amount=amount,
+        from_currency=from_currency,
+        to_currency=to_currency,
+        correlation_id=ctx.deps.correlation_id,
+    )
+
+    return currency.convert_currency(amount, from_currency, to_currency)
+
+
+# ---------------------------------------------------------------------------
+# Financial alignment tools
+# ---------------------------------------------------------------------------
+
+FINANCIAL_ALIGNMENT_THRESHOLD = 0.02  # 2%
+
+
+@onboarding_agent.tool
+async def check_financial_alignment(
+    ctx: RunContext[OnboardingDeps],
+) -> dict:
+    """
+    Check financial alignment between opportunity deal value and invoice.
+
+    Call this AFTER fetching opportunity and invoice data. It automatically
+    reads from the collected data — no arguments needed.
+
+    Performs two checks with a 2% tolerance threshold:
+    1. Opportunity Amount vs Invoice Total (converts currencies if different)
+    2. Invoice Amount Paid vs Invoice Total (detects underpayment)
+
+    Returns warnings (not violations) for any gaps exceeding the threshold.
+    """
+    from app.integrations import currency
+
+    log_event(
+        "tool.financial_alignment.check",
+        account_id=ctx.deps.account_id,
+        correlation_id=ctx.deps.correlation_id,
+    )
+
+    opportunity = ctx.deps.collected_opportunity
+    invoice = ctx.deps.collected_invoice
+    warnings = []
+    details = {}
+
+    # --- Check 1: Opportunity Amount vs Invoice Total ---
+    if opportunity and invoice:
+        opp_amount = opportunity.get("Amount")
+        inv_total = invoice.get("total")
+        inv_currency = invoice.get("currency", "USD")
+        opp_currency = "USD"  # Salesforce opportunities are in USD
+
+        if opp_amount and inv_total:
+            normalized_inv_total = inv_total
+
+            if inv_currency != opp_currency:
+                conversion = currency.convert_currency(
+                    inv_total, inv_currency, opp_currency,
+                )
+                if conversion.get("status") == "OK":
+                    normalized_inv_total = conversion["converted_amount"]
+                    details["currency_conversion"] = {
+                        "from": inv_currency,
+                        "to": opp_currency,
+                        "rate": conversion["rate"],
+                        "original_amount": inv_total,
+                        "converted_amount": normalized_inv_total,
+                    }
+
+            gap = abs(normalized_inv_total - opp_amount)
+            gap_pct = gap / opp_amount if opp_amount else 0
+
+            details["opportunity_vs_invoice"] = {
+                "opportunity_amount": opp_amount,
+                "invoice_total": inv_total,
+                "invoice_currency": inv_currency,
+                "normalized_invoice_total": normalized_inv_total,
+                "gap_amount": round(gap, 2),
+                "gap_percentage": round(gap_pct * 100, 2),
+                "threshold_percentage": FINANCIAL_ALIGNMENT_THRESHOLD * 100,
+                "within_threshold": gap_pct <= FINANCIAL_ALIGNMENT_THRESHOLD,
+            }
+
+            if gap_pct > FINANCIAL_ALIGNMENT_THRESHOLD:
+                warnings.append(
+                    f"Invoice total ({inv_currency} {inv_total:,.2f} = "
+                    f"USD {normalized_inv_total:,.2f}) differs from opportunity "
+                    f"amount (USD {opp_amount:,.2f}) by {gap_pct*100:.1f}% "
+                    f"(exceeds {FINANCIAL_ALIGNMENT_THRESHOLD*100:.0f}% threshold)"
+                )
+
+    # --- Check 2: Invoice Paid vs Total ---
+    if invoice:
+        inv_total = invoice.get("total", 0)
+        inv_paid = invoice.get("amount_paid", 0)
+
+        if inv_total and inv_total > 0:
+            paid_gap = inv_total - inv_paid
+            paid_gap_pct = paid_gap / inv_total if inv_total else 0
+
+            details["paid_vs_total"] = {
+                "invoice_total": inv_total,
+                "amount_paid": inv_paid,
+                "amount_remaining": round(paid_gap, 2),
+                "unpaid_percentage": round(paid_gap_pct * 100, 2),
+                "threshold_percentage": FINANCIAL_ALIGNMENT_THRESHOLD * 100,
+                "within_threshold": paid_gap_pct <= FINANCIAL_ALIGNMENT_THRESHOLD,
+            }
+
+            if paid_gap_pct > FINANCIAL_ALIGNMENT_THRESHOLD:
+                warnings.append(
+                    f"Invoice underpayment: {paid_gap_pct*100:.1f}% unpaid "
+                    f"(${paid_gap:,.2f} remaining of ${inv_total:,.2f} total, "
+                    f"exceeds {FINANCIAL_ALIGNMENT_THRESHOLD*100:.0f}% threshold)"
+                )
+
+    log_event(
+        "tool.financial_alignment.result",
+        account_id=ctx.deps.account_id,
+        warnings_count=len(warnings),
+        correlation_id=ctx.deps.correlation_id,
+    )
+
+    return {
+        "status": "OK",
+        "warnings": warnings,
+        "details": details,
+    }

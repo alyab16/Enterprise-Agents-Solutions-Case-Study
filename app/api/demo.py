@@ -50,6 +50,20 @@ ALL_SCENARIOS = [
         "expected_decision": "BLOCK",
         "category": "normal",
     },
+    {
+        "id": "FOREX-005",
+        "name": "Escalation - FX Invoice Mismatch",
+        "description": "Invoice in CAD vs USD opportunity. Currency conversion reveals gap beyond 2% threshold.",
+        "expected_decision": "ESCALATE",
+        "category": "normal",
+    },
+    {
+        "id": "PARTIAL-006",
+        "name": "Escalation - Partial Payment Gap",
+        "description": "Invoice partially paid. 5% underpayment exceeds 2% threshold.",
+        "expected_decision": "ESCALATE",
+        "category": "normal",
+    },
 ]
 
 

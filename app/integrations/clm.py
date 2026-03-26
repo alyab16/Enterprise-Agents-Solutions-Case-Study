@@ -343,6 +343,117 @@ MOCK_CLM_DB: Dict[str, Dict[str, Any]] = {
             "audit": "/api/v1/contracts/CLM-CTR-003/audit",
         }
     },
+    "FOREX-005": {
+        "id": "CLM-CTR-005",
+        "contract_id": "CLM-CTR-005",
+        "external_id": "FOREX-005",
+        "name": "Maple Payments - Growth Service Agreement",
+        "status": "EXECUTED",
+        "status_details": {
+            "code": "EXECUTED",
+            "label": "Fully Executed",
+            "description": "All parties have signed"
+        },
+        "created_date": "2024-02-15T10:00:00Z",
+        "sent_date": "2024-02-20T09:00:00Z",
+        "signed_date": "2024-02-26T14:00:00Z",
+        "effective_date": "2024-03-01",
+        "expiry_date": "2025-02-28",
+        "signatories": [
+            {
+                "id": "SIG-009",
+                "name": "Priya Sharma",
+                "email": "priya.sharma@maplepayments.ca",
+                "role": "CEO",
+                "company": "Maple Payments Inc.",
+                "signed": True,
+                "signed_date": "2024-02-25T10:00:00Z",
+                "ip_address": "203.0.113.50",
+            },
+            {
+                "id": "SIG-010",
+                "name": "Sarah Johnson",
+                "email": "sarah.johnson@stackadapt.com",
+                "role": "CS Manager",
+                "company": "StackAdapt",
+                "signed": True,
+                "signed_date": "2024-02-26T14:00:00Z",
+                "ip_address": "10.0.0.50",
+            },
+        ],
+        "key_terms": {
+            "payment_terms": "Net 45",
+            "auto_renewal": True,
+            "renewal_notice_days": 30,
+            "sla_tier": "Growth",
+            "support_hours": "Business Hours",
+            "data_retention_days": 180,
+        },
+        "documents": [
+            {"id": "DOC-005", "name": "Master Service Agreement", "version": "1.0"},
+        ],
+        "links": {
+            "self": "/api/v1/contracts/CLM-CTR-005",
+            "download": "/api/v1/contracts/CLM-CTR-005/download",
+            "audit": "/api/v1/contracts/CLM-CTR-005/audit",
+        }
+    },
+    "PARTIAL-006": {
+        "id": "CLM-CTR-006",
+        "contract_id": "CLM-CTR-006",
+        "external_id": "PARTIAL-006",
+        "name": "Summit Cloud - Enterprise Service Agreement",
+        "status": "EXECUTED",
+        "status_details": {
+            "code": "EXECUTED",
+            "label": "Fully Executed",
+            "description": "All parties have signed"
+        },
+        "created_date": "2024-02-10T10:00:00Z",
+        "sent_date": "2024-02-15T09:00:00Z",
+        "signed_date": "2024-02-21T14:00:00Z",
+        "effective_date": "2024-03-01",
+        "expiry_date": "2025-02-28",
+        "signatories": [
+            {
+                "id": "SIG-011",
+                "name": "Marcus Chen",
+                "email": "marcus.chen@summitcloud.io",
+                "role": "CTO",
+                "company": "Summit Cloud Solutions",
+                "signed": True,
+                "signed_date": "2024-02-20T10:00:00Z",
+                "ip_address": "198.51.100.25",
+            },
+            {
+                "id": "SIG-012",
+                "name": "Sarah Johnson",
+                "email": "sarah.johnson@stackadapt.com",
+                "role": "CS Manager",
+                "company": "StackAdapt",
+                "signed": True,
+                "signed_date": "2024-02-21T14:00:00Z",
+                "ip_address": "10.0.0.50",
+            },
+        ],
+        "key_terms": {
+            "payment_terms": "Net 30",
+            "auto_renewal": True,
+            "renewal_notice_days": 30,
+            "sla_tier": "Enterprise",
+            "support_hours": "24/7",
+            "data_retention_days": 365,
+        },
+        "documents": [
+            {"id": "DOC-006", "name": "Master Service Agreement", "version": "1.0"},
+            {"id": "DOC-007", "name": "Data Processing Agreement", "version": "1.0"},
+        ],
+        "links": {
+            "self": "/api/v1/contracts/CLM-CTR-006",
+            "download": "/api/v1/contracts/CLM-CTR-006/download",
+            "audit": "/api/v1/contracts/CLM-CTR-006/audit",
+        }
+    },
     # Error simulation entries
     "AUTH-ERROR": {"_simulate_error": "authentication"},
     "PERM-ERROR": {"_simulate_error": "authorization"},

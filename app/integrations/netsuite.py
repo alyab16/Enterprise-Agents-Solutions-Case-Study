@@ -320,7 +320,134 @@ MOCK_INVOICES_DB: Dict[str, Dict[str, Any]] = {
         "links": [
             {"rel": "self", "href": "/invoice/1004"}
         ]
-    }
+    },
+    "1005": {
+        "id": "1005",
+        "tranId": "INV-2024-005",
+        "externalId": "FOREX-005-INV",
+        "entity": {
+            "id": "105",
+            "refName": "Maple Payments Inc."
+        },
+        "tranDate": "2024-03-01",
+        "dueDate": "2024-04-15",
+        "status": {
+            "id": "B",
+            "refName": "Paid In Full"
+        },
+        "currency": {
+            "id": "2",
+            "refName": "CAD"
+        },
+        "exchangeRate": 1.45,
+        "subtotal": 145000.00,
+        "taxTotal": 0.00,
+        "total": 145000.00,
+        "amountPaid": 145000.00,
+        "amountRemaining": 0.00,
+        "terms": {
+            "id": "2",
+            "refName": "Net 45"
+        },
+        "memo": "Growth plan - annual license (CAD)",
+        "createdDate": "2024-03-01T09:00:00Z",
+        "lastModifiedDate": "2024-04-10T14:00:00Z",
+        "email": "billing@maplepayments.ca",
+        "billAddress": "200 Bay Street, Toronto, ON M5J 2J5, Canada",
+        "subsidiary": {
+            "id": "2",
+            "refName": "StackAdapt Canada Ltd."
+        },
+        "department": {
+            "id": "2",
+            "refName": "Sales"
+        },
+        "class": {
+            "id": "2",
+            "refName": "Growth"
+        },
+        "item": {
+            "items": [
+                {
+                    "item": {"id": "201", "refName": "Growth License - Annual"},
+                    "description": "Growth License - Annual Subscription",
+                    "quantity": 1,
+                    "rate": 145000.00,
+                    "amount": 145000.00,
+                }
+            ]
+        },
+        "links": [
+            {"rel": "self", "href": "/invoice/1005"}
+        ]
+    },
+    "1006": {
+        "id": "1006",
+        "tranId": "INV-2024-006",
+        "externalId": "PARTIAL-006-INV",
+        "entity": {
+            "id": "106",
+            "refName": "Summit Cloud Solutions"
+        },
+        "tranDate": "2024-03-01",
+        "dueDate": "2024-03-31",
+        "status": {
+            "id": "A",
+            "refName": "Open"
+        },
+        "currency": {
+            "id": "1",
+            "refName": "USD"
+        },
+        "exchangeRate": 1.0,
+        "subtotal": 200000.00,
+        "taxTotal": 0.00,
+        "total": 200000.00,
+        "amountPaid": 190000.00,
+        "amountRemaining": 10000.00,
+        "terms": {
+            "id": "1",
+            "refName": "Net 30"
+        },
+        "memo": "Enterprise platform - annual license",
+        "createdDate": "2024-03-01T09:00:00Z",
+        "lastModifiedDate": "2024-03-20T11:00:00Z",
+        "email": "ap@summitcloud.io",
+        "billAddress": "500 Congress Ave, Austin, TX 78701, USA",
+        "subsidiary": {
+            "id": "1",
+            "refName": "StackAdapt Inc."
+        },
+        "department": {
+            "id": "1",
+            "refName": "Sales"
+        },
+        "class": {
+            "id": "1",
+            "refName": "Enterprise"
+        },
+        "item": {
+            "items": [
+                {
+                    "item": {"id": "101", "refName": "Enterprise License - Annual"},
+                    "description": "Enterprise License - Annual Subscription",
+                    "quantity": 1,
+                    "rate": 150000.00,
+                    "amount": 150000.00,
+                },
+                {
+                    "item": {"id": "102", "refName": "Professional Services"},
+                    "description": "Implementation & Onboarding Services",
+                    "quantity": 1,
+                    "rate": 50000.00,
+                    "amount": 50000.00,
+                }
+            ]
+        },
+        "links": [
+            {"rel": "self", "href": "/invoice/1006"}
+        ]
+    },
 }
 
 # Mapping from external account IDs to NetSuite invoice IDs
@@ -329,6 +456,8 @@ ACCOUNT_TO_INVOICE_MAP = {
     "BETA-002": "1002", 
     "GAMMA-003": "1003",
     "DELTA-004": "1004",
+    "FOREX-005": "1005",
+    "PARTIAL-006": "1006",
     # Error simulation accounts
     "AUTH-ERROR": "_auth_error",
     "PERM-ERROR": "_perm_error",
