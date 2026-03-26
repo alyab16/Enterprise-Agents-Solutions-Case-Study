@@ -7,7 +7,7 @@ An AI-powered customer onboarding automation agent built with **Pydantic AI + Fa
 This agent automates the customer journey from **Sales → Contract → Invoice → Provisioning**, featuring:
 
 - **Agentic Architecture**: The LLM reasons and decides which tools to call — no hardcoded state machine or graph
-- **Native Tool Calling**: 18 tools registered via `@agent.tool` decorators; the agent orchestrates them autonomously
+- **Native Tool Calling**: 16 tools registered via `@agent.tool` decorators; the agent orchestrates them autonomously
 - **MCP-Style Extensibility**: Every tool is mirrored as a FastMCP server definition for future extraction to standalone services
 - **Multi-System Integration**: Salesforce, CLM, NetSuite, currency conversion (live API), and SaaS provisioning
 - **Live Currency Conversion**: Real-time USD/CAD exchange rates via ExchangeRate API for financial alignment checks
@@ -440,7 +440,7 @@ Enterprise-Agents-Solutions-Case-Study/
 └── app/
     ├── agent/                            # Pydantic AI agent
     │   ├── __init__.py                   # run_onboarding_async() entry point
-    │   ├── onboarding_agent.py           # Agent + 18 tools (system prompt, tool defs)
+    │   ├── onboarding_agent.py           # Agent + 16 tools (system prompt, tool defs)
     │   ├── dependencies.py               # OnboardingDeps (runtime context)
     │   ├── models.py                     # OnboardingResult (structured output)
     │   ├── state_utils.py                # State manipulation utilities
