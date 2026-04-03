@@ -8,8 +8,8 @@ output automatically.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
-from typing import Any, Dict, List, Literal, Optional
+from pydantic import BaseModel, Field, field_validator
+from typing import Any, Dict, List, Literal, Optional, Union
 
 
 class RecommendedAction(BaseModel):
@@ -31,14 +31,31 @@ class OnboardingResult(BaseModel):
     risk_level: Literal["low", "medium", "high", "critical"]
     summary: str = Field(description="Human-readable 1-3 sentence summary of the onboarding status")
 
-    violations: Dict[str, List[str]] = Field(
+    violations: Union[Dict[str, List[str]], List[Any]] = Field(
         default_factory=dict,
         description="Blocking issues grouped by domain (e.g. 'salesforce', 'contract')",
     )
-    warnings: Dict[str, List[str]] = Field(
+    warnings: Union[Dict[str, List[str]], List[Any]] = Field(
         default_factory=dict,
         description="Non-blocking concerns grouped by domain",
     )
+
+    @field_validator("violations", "warnings", mode="before")
+    @classmethod
+    def _normalize_to_dict(cls, v: Any) -> Dict[str, List[str]]:
+        """Accept list or dict from the LLM and normalize to dict."""
+        if isinstance(v, dict):
+            return v
+        if isinstance(v, list):
+            items = []
+            for item in v:
+                if isinstance(item, str):
+                    items.append(item)
+                elif isinstance(item, dict):
+                    # Flatten dict values like {"warning": "some text"}
+                    items.extend(str(val) for val in item.values())
+            return {"general": items} if items else {}
+        return {}
     api_errors: List[Dict[str, Any]] = Field(
         default_factory=list,
         description="API integration errors encountered during data fetching",
