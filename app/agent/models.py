@@ -19,6 +19,23 @@ class RecommendedAction(BaseModel):
     priority: int = 1
 
 
+def _flatten_to_strings(v: Any) -> List[str]:
+    """Recursively extract all string values from nested dicts/lists."""
+    if isinstance(v, str):
+        return [v]
+    if isinstance(v, list):
+        out: List[str] = []
+        for item in v:
+            out.extend(_flatten_to_strings(item))
+        return out
+    if isinstance(v, dict):
+        out = []
+        for val in v.values():
+            out.extend(_flatten_to_strings(val))
+        return out
+    return [str(v)]
+
+
 class OnboardingResult(BaseModel):
     """
     Structured output from the onboarding agent.
@@ -43,18 +60,32 @@ class OnboardingResult(BaseModel):
     @field_validator("violations", "warnings", mode="before")
     @classmethod
     def _normalize_to_dict(cls, v: Any) -> Dict[str, List[str]]:
-        """Accept list or dict from the LLM and normalize to dict."""
-        if isinstance(v, dict):
-            return v
+        """Accept any shape from the LLM and normalize to Dict[str, List[str]].
+
+        gpt-4o-mini returns violations/warnings in many shapes:
+        - List of strings or dicts
+        - Dict[str, List[str]]  (correct)
+        - Dict[str, Dict[str, ...]]  (nested — needs flattening)
+        - Dict[str, str]  (single values instead of lists)
+        """
         if isinstance(v, list):
             items = []
             for item in v:
                 if isinstance(item, str):
                     items.append(item)
                 elif isinstance(item, dict):
-                    # Flatten dict values like {"warning": "some text"}
-                    items.extend(str(val) for val in item.values())
+                    items.extend(_flatten_to_strings(item))
+                else:
+                    items.append(str(item))
             return {"general": items} if items else {}
+        if isinstance(v, dict):
+            result: Dict[str, List[str]] = {}
+            for key, val in v.items():
+                if isinstance(val, list) and all(isinstance(s, str) for s in val):
+                    result[str(key)] = val
+                else:
+                    result[str(key)] = _flatten_to_strings(val)
+            return result
         return {}
     api_errors: List[Dict[str, Any]] = Field(
         default_factory=list,

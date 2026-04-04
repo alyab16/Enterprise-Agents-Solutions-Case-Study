@@ -2,7 +2,7 @@
 Demo API endpoints for showcasing the onboarding agent.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.responses import HTMLResponse, FileResponse
 from app.agent import run_onboarding_async
 from app.notifications import get_sent_notifications, clear_notifications
@@ -190,10 +190,10 @@ async def run_all_with_reports():
 
 @router.post("/enable-random-errors")
 async def enable_random_errors(
-    auth_rate: float = 0.05,
-    validation_rate: float = 0.05,
-    rate_limit_rate: float = 0.02,
-    server_error_rate: float = 0.01
+    auth_rate: float = Query(default=0.05, ge=0.0, le=1.0, description="Authentication error probability (0-1)"),
+    validation_rate: float = Query(default=0.05, ge=0.0, le=1.0, description="Validation error probability (0-1)"),
+    rate_limit_rate: float = Query(default=0.02, ge=0.0, le=1.0, description="Rate limit error probability (0-1)"),
+    server_error_rate: float = Query(default=0.01, ge=0.0, le=1.0, description="Server error probability (0-1)"),
 ):
     """Enable random error injection for stress testing."""
     enable_error_simulation(
