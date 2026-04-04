@@ -576,18 +576,24 @@ async def convert_currency(
     amount: float,
     from_currency: str,
     to_currency: str,
+    date: str = "",
 ) -> dict:
     """
-    Convert a monetary amount between currencies using live exchange rates.
+    Convert a monetary amount between currencies using exchange rates.
 
     Useful for converting USD invoice totals to CAD (StackAdapt's home
     currency). Uses the European Central Bank's published rates via the
     Frankfurter API — no API key required.
 
+    Supports historical rates: pass a date (YYYY-MM-DD) to get the rate
+    from that date (e.g. the invoice or payment date). If no date is
+    provided, uses the latest available rate.
+
     Args:
         amount: The monetary amount to convert.
         from_currency: Source currency code (e.g. "USD").
         to_currency: Target currency code (e.g. "CAD").
+        date: Optional date (YYYY-MM-DD) for historical rate lookup.
     """
     from app.integrations import currency
 
@@ -596,10 +602,13 @@ async def convert_currency(
         amount=amount,
         from_currency=from_currency,
         to_currency=to_currency,
+        date=date or "latest",
         correlation_id=ctx.deps.correlation_id,
     )
 
-    return currency.convert_currency(amount, from_currency, to_currency)
+    return currency.convert_currency(
+        amount, from_currency, to_currency, date=date or None,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -645,12 +654,16 @@ async def check_financial_alignment(
         inv_currency = invoice.get("currency", "USD")
         opp_currency = "USD"  # Salesforce opportunities are in USD
 
+        # Use the invoice date for historical rate lookup so the conversion
+        # reflects the rate at the time of payment, not today's rate.
+        inv_date = invoice.get("invoice_date")
+
         if opp_amount and inv_total:
             normalized_inv_total = inv_total
 
             if inv_currency != opp_currency:
                 conversion = currency.convert_currency(
-                    inv_total, inv_currency, opp_currency,
+                    inv_total, inv_currency, opp_currency, date=inv_date,
                 )
                 if conversion.get("status") == "OK":
                     normalized_inv_total = conversion["converted_amount"]
@@ -658,6 +671,7 @@ async def check_financial_alignment(
                         "from": inv_currency,
                         "to": opp_currency,
                         "rate": conversion["rate"],
+                        "rate_date": conversion.get("date", ""),
                         "original_amount": inv_total,
                         "converted_amount": normalized_inv_total,
                     }

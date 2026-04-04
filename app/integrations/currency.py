@@ -1,33 +1,38 @@
 """
-Currency conversion integration using the ExchangeRate API.
+Currency conversion integration using the Frankfurter API.
 
-Uses the free open.er-api.com service for live exchange rates.
-No API key required.
+Supports both historical and latest exchange rates.
+Uses the European Central Bank's published rates — no API key required.
 
-API docs: https://www.exchangerate-api.com/docs/free
+API docs: https://frankfurter.dev
 """
 
 import httpx
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from app.logging.logger import log_event
 
 
-EXCHANGE_RATE_BASE_URL = "https://open.er-api.com/v6/latest"
+FRANKFURTER_BASE_URL = "https://api.frankfurter.dev/v1"
 
 
 def convert_currency(
     amount: float,
     from_currency: str,
     to_currency: str,
+    date: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Convert an amount between currencies using live exchange rates.
+    Convert an amount between currencies using exchange rates.
+
+    When a date is provided (YYYY-MM-DD), uses the historical rate for that
+    date. Otherwise falls back to the latest available rate.
 
     Args:
         amount: The amount to convert.
         from_currency: ISO 4217 currency code (e.g. "USD").
         to_currency: ISO 4217 currency code (e.g. "CAD").
+        date: Optional date string (YYYY-MM-DD) for historical rate lookup.
 
     Returns:
         Dict with status, converted_amount, rate, and metadata.
@@ -44,6 +49,7 @@ def convert_currency(
             "amount": amount,
             "converted_amount": amount,
             "rate": 1.0,
+            "date": date or "latest",
         }
 
     log_event(
@@ -51,11 +57,15 @@ def convert_currency(
         amount=amount,
         from_currency=from_currency,
         to_currency=to_currency,
+        date=date or "latest",
     )
 
     try:
+        # Use historical endpoint if date provided, otherwise latest
+        endpoint = date if date else "latest"
         resp = httpx.get(
-            f"{EXCHANGE_RATE_BASE_URL}/{from_currency}",
+            f"{FRANKFURTER_BASE_URL}/{endpoint}",
+            params={"from": from_currency, "to": to_currency, "amount": amount},
             timeout=10,
         )
         resp.raise_for_status()
@@ -70,14 +80,15 @@ def convert_currency(
                 "amount": amount,
             }
 
-        rate = data["rates"][to_currency]
-        converted_amount = round(amount * rate, 2)
+        converted_amount = round(data["rates"][to_currency], 2)
+        rate = round(converted_amount / amount, 6) if amount else 0
 
         log_event(
             "currency.convert.success",
             from_currency=from_currency,
             to_currency=to_currency,
             rate=rate,
+            date=data.get("date", ""),
         )
 
         return {
@@ -86,8 +97,8 @@ def convert_currency(
             "to": to_currency,
             "amount": amount,
             "converted_amount": converted_amount,
-            "rate": round(rate, 6),
-            "date": data.get("time_last_update_utc", ""),
+            "rate": rate,
+            "date": data.get("date", ""),
         }
 
     except (httpx.HTTPError, KeyError) as e:

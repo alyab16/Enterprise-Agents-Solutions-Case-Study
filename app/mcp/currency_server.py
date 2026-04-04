@@ -26,24 +26,31 @@ def convert_currency(
     amount: float,
     from_currency: str,
     to_currency: str,
+    date: str = "",
 ) -> dict:
     """
-    Convert an amount from one currency to another using live rates.
+    Convert an amount from one currency to another.
 
     Uses the European Central Bank's published exchange rates via
     the Frankfurter API. No API key required.
+
+    Supports historical rates: pass a date (YYYY-MM-DD) to get the
+    rate from that date. If omitted, uses the latest available rate.
 
     Args:
         amount: The monetary amount to convert.
         from_currency: Source currency code (e.g. "USD").
         to_currency: Target currency code (e.g. "CAD").
+        date: Optional date (YYYY-MM-DD) for historical rate lookup.
 
     Returns:
         Dict with converted_amount, exchange rate, and date.
     """
     from app.integrations import currency
 
-    return currency.convert_currency(amount, from_currency, to_currency)
+    return currency.convert_currency(
+        amount, from_currency, to_currency, date=date or None,
+    )
 
 
 if __name__ == "__main__":
