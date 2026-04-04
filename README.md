@@ -10,7 +10,7 @@ This agent automates the customer journey from **Sales → Contract → Invoice 
 - **Native Tool Calling**: 16 tools registered via `@agent.tool` decorators; the agent orchestrates them autonomously
 - **MCP-Style Extensibility**: Every tool is mirrored as a FastMCP server definition for future extraction to standalone services
 - **Multi-System Integration**: Salesforce, CLM, NetSuite, currency conversion (live API), and SaaS provisioning
-- **Live Currency Conversion**: Real-time USD/CAD exchange rates via ExchangeRate API for financial alignment checks
+- **Live Currency Conversion**: Historical and latest USD/CAD exchange rates via Frankfurter API (ECB data) for financial alignment checks
 - **Financial Alignment Detection**: Automated comparison of opportunity deal values vs invoice totals across currencies (2% threshold)
 - **Configurable Error Simulation**: Auth failures, permission errors, validation errors, rate limits, server errors with adjustable probabilities
 - **Comprehensive Error Handling**: API errors are properly caught, recorded, and influence decisions
@@ -35,14 +35,189 @@ Unlike a traditional state machine or workflow engine, this agent uses **native 
 LLM Agent (Pydantic AI)
   ├── Fetch Tools (6)      → Salesforce, CLM, NetSuite
   ├── Validation Tools (2) → Business rules, Financial alignment
-  ├── Currency Tool (1)    → Live exchange rates (ExchangeRate API)
+  ├── Currency Tool (1)    → Historical/live exchange rates (Frankfurter API)
   ├── Provisioning (1)     → SaaS tenant creation
-  └── Notification Tools (8) → Slack, Email, Welcome
+  └── Notification Tools (6) → Slack, Email, Welcome
 ```
 
 The agent decides **what to call, in what order, and how many times** based on tool results. Adding a new capability means registering a new `@agent.tool` — zero changes to orchestration logic.
 
 Each tool is also defined as a **FastMCP server** in `app/mcp/`, ready for extraction to standalone MCP services.
+
+### Architecture Diagram
+
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    background: '#ffffff'
+    primaryColor: '#e8f0ff'
+    primaryBorderColor: '#5b8def'
+    lineColor: '#6b7a90'
+    primaryTextColor: '#1f2937'
+    clusterBkg: '#f7f9fc'
+    clusterBorder: '#c7d0e0'
+    fontSize: 13px
+  flowchart:
+    curve: basis
+    nodeSpacing: 30
+    rankSpacing: 40
+---
+flowchart LR
+ subgraph TRIGGERS["1 · TRIGGER LAYER — How onboarding starts"]
+    direction LR
+        WH["fa:fa-bolt Salesforce Webhook\n(real-time)"]
+        API["fa:fa-plug REST API / Manual\n(on-demand)"]
+        BATCH["fa:fa-clock Scheduled Batch\n(nightly / periodic)"]
+  end
+ subgraph PARALLEL["Parallel fetches after account is loaded"]
+    direction LR
+        F_USER["fetch_salesforce\n_user\n(account owner)"]
+        F_OPP["fetch_salesforce\n_opportunity\n(deal details)"]
+        F_CON["fetch_salesforce\n_contract\n(SF contract)"]
+        F_CLM["fetch_clm\n_contract\n(CLM system)"]
+        F_INV["fetch_netsuite\n_invoice\n(billing data)"]
+  end
+ subgraph FETCH["Step 1 · GATHER DATA — fetch from source systems"]
+    direction TB
+        F_ACC["fetch_salesforce_account\n(primary record)"]
+        PARALLEL
+  end
+ subgraph VALIDATE["Step 2 · VALIDATE — business rules + financial checks"]
+    direction TB
+        V_BIZ["validate_business_rules\n(5 domains · reads from deps)"]
+        V_FIN["check_financial_alignment\n(cross-system · 2% threshold)"]
+        V_CUR["convert_currency\n(historical ECB rate\nvia Frankfurter API)"]
+  end
+ subgraph ACT_B["BLOCK path — stop onboarding"]
+    direction LR
+        N_BLK["notify_blocked\n(Slack alert)"]
+        N_FIN["notify_finance_overdue\n(finance team alert)"]
+  end
+ subgraph ACT_E["ESCALATE path — flag for review"]
+        N_ESC["notify_escalation\n(CS team review)"]
+  end
+ subgraph ACT_P["PROCEED path — complete onboarding"]
+    direction LR
+        PROV["provision_account\n(activate services)"]
+        N_SUC["notify_success\n(Slack confirmation)"]
+        N_EMAIL["send_email\n(CS team summary)"]
+        N_WEL["send_customer_welcome\n(welcome email)"]
+  end
+ subgraph AGENT["2 · PYDANTIC AI AGENT — 16 tools via @agent.tool"]
+        ENTRY["Initialize OnboardingDeps\n(account_id, correlation_id)"]
+        FETCH
+        VALIDATE
+        DECIDE{"LLM DECISION POINT\nbased on tool results\n(errors / warnings / clear)"}
+        ACT_B
+        ACT_E
+        ACT_P
+        OUTPUT["OnboardingResult\n(Pydantic structured output)"]
+  end
+ subgraph REPORTS["3 · GENERATED REPORTS — post-run artifacts"]
+    direction LR
+        R_MD["fa:fa-file-text Markdown\nReport"]
+        R_HTML["fa:fa-envelope HTML\nEmail"]
+        R_JSON["fa:fa-database JSON\nAudit Log"]
+  end
+ subgraph OBS["4 · OBSERVABILITY — opt-in tracing"]
+    direction LR
+        LOGFIRE["Pydantic Logfire\n(native tracing)"]
+        LANGSMITH["LangSmith\n(OTEL bridge)"]
+  end
+ subgraph MCP["5 · FASTMCP SERVERS — app/mcp/"]
+    direction TB
+        MCP_SF["salesforce_server\n(accounts, users,\nopps, contracts)"]
+        MCP_CLM["clm_server\n(contract lifecycle)"]
+        MCP_NS["netsuite_server\n(invoices, payments)"]
+        MCP_CUR["currency_server\n(FX conversion)"]
+        MCP_PRV["provisioning_server\n(account activation)"]
+        MCP_NOT["notifications_server\n(Slack, email)"]
+        MCP_VAL["validation_server\n(business rules)"]
+  end
+ subgraph EXT["6 · EXTERNAL SYSTEMS — third-party integrations"]
+    direction TB
+        SF["fa:fa-cloud Salesforce CRM\n(Account · Opportunity\nUser · Contract)"]
+        CLM_EXT["fa:fa-file-contract CLM\n(Contract Lifecycle Mgmt)"]
+        NS["fa:fa-calculator NetSuite ERP\n(Invoices · Payments)"]
+        FX["fa:fa-exchange Frankfurter API\n(ECB exchange rates)"]
+        SLACK["fa:fa-comments Slack\n(Notifications)"]
+        EMAIL_EXT["fa:fa-envelope Email\n(Welcome · CS alerts)"]
+  end
+    TRIGGERS -- account_id + correlation_id --> ENTRY
+    ENTRY --> F_ACC
+    F_ACC -- OwnerId --> F_USER
+    F_ACC --> F_OPP & F_CON & F_CLM & F_INV
+    FETCH --> V_BIZ
+    V_BIZ --> V_FIN
+    V_FIN -. if currencies differ .-> V_CUR
+    VALIDATE --> DECIDE
+    DECIDE -- errors or\nviolations --> ACT_B
+    DECIDE -- "warnings only\n(non-critical)" --> ACT_E
+    DECIDE -- all clear\n(no issues) --> ACT_P
+    ACT_B --> OUTPUT
+    ACT_E --> OUTPUT
+    ACT_P --> OUTPUT
+    OUTPUT --> REPORTS
+    AGENT -.-> OBS
+    AGENT -. every tool mirrored as FastMCP server .-> MCP
+    MCP --> EXT
+
+     WH:::trigger
+     API:::trigger
+     BATCH:::trigger
+     F_USER:::fetch
+     F_OPP:::fetch
+     F_CON:::fetch
+     F_CLM:::fetch
+     F_INV:::fetch
+     F_ACC:::fetch
+     V_BIZ:::validate
+     V_FIN:::validate
+     V_CUR:::validate
+     N_BLK:::block
+     N_FIN:::block
+     N_ESC:::escalate
+     PROV:::proceed
+     N_SUC:::proceed
+     N_EMAIL:::proceed
+     N_WEL:::proceed
+     ENTRY:::entry
+     DECIDE:::decision
+     OUTPUT:::output
+     R_MD:::report
+     R_HTML:::report
+     R_JSON:::report
+     LOGFIRE:::obs
+     LANGSMITH:::obs
+     MCP_SF:::mcp
+     MCP_CLM:::mcp
+     MCP_NS:::mcp
+     MCP_CUR:::mcp
+     MCP_PRV:::mcp
+     MCP_NOT:::mcp
+     MCP_VAL:::mcp
+     SF:::ext
+     CLM_EXT:::ext
+     NS:::ext
+     FX:::ext
+     SLACK:::ext
+     EMAIL_EXT:::ext
+    classDef trigger   fill:#fff3cd,stroke:#d4a017,stroke-width:2px,color:#1f2937
+    classDef entry     fill:#e8f0ff,stroke:#5b8def,stroke-width:2px,color:#1f2937
+    classDef fetch     fill:#e6f7ee,stroke:#2e9d69,stroke-width:1px,color:#1f2937
+    classDef validate  fill:#f1ecff,stroke:#8b7cf6,stroke-width:1px,color:#1f2937
+    classDef decision  fill:#fff7db,stroke:#d4a017,stroke-width:2px,color:#1f2937
+    classDef block     fill:#fde8e8,stroke:#e5484d,stroke-width:1px,color:#1f2937
+    classDef escalate  fill:#fff3cd,stroke:#d4a017,stroke-width:1px,color:#1f2937
+    classDef proceed   fill:#e6f7ee,stroke:#2e9d69,stroke-width:1px,color:#1f2937
+    classDef output    fill:#e8f0ff,stroke:#5b8def,stroke-width:2px,color:#1f2937
+    classDef report    fill:#f5f5f5,stroke:#999,stroke-width:1px,color:#1f2937
+    classDef mcp       fill:#f0f0f0,stroke:#888,stroke-width:1px,stroke-dasharray:5 5,color:#555
+    classDef ext       fill:#dbeafe,stroke:#3b82f6,stroke-width:1px,color:#1f2937
+    classDef obs       fill:#fef3c7,stroke:#d97706,stroke-width:1px,stroke-dasharray:5 5,color:#92400e
+```
 
 ### Decision Logic
 
@@ -144,7 +319,7 @@ LOG_DIR=logs
 ENVIRONMENT=development
 ```
 
-> **Note**: The agent works without tracing keys. OpenAI is recommended for best results; without it, the agent falls back to Ollama (requires a local Ollama server). Currency conversion uses the free ExchangeRate API — no key needed.
+> **Note**: The agent works without tracing keys. OpenAI is recommended for best results; without it, the agent falls back to Ollama (requires a local Ollama server). Currency conversion uses the free Frankfurter API (ECB rates) — no key needed.
 
 ---
 
@@ -208,7 +383,7 @@ uvicorn main:app --reload
 | FOREX-005 | FX Invoice Mismatch (CAD vs USD) | ⚠️ ESCALATE |
 | PARTIAL-006 | Partial Payment Gap (5% underpayment) | ⚠️ ESCALATE |
 
-**FOREX-005** demonstrates live currency conversion: the invoice is in CAD ($145,000) while the opportunity is in USD ($100,000). After real-time conversion, the gap exceeds the 2% threshold, triggering escalation.
+**FOREX-005** demonstrates historical currency conversion: the invoice is in CAD ($145,000) while the opportunity is in USD ($100,000). The conversion uses the ECB rate from the invoice date (2024-03-01), not today's rate, ensuring financial accuracy. The resulting gap exceeds the 2% threshold, triggering escalation.
 
 **PARTIAL-006** demonstrates underpayment detection: $190,000 paid of a $200,000 invoice (5% gap) exceeds the 2% financial alignment threshold.
 
@@ -463,7 +638,7 @@ Enterprise-Agents-Solutions-Case-Study/
     │   ├── salesforce.py                 # Salesforce CRM (accounts, opps, contracts)
     │   ├── clm.py                        # Contract Lifecycle Management
     │   ├── netsuite.py                   # NetSuite ERP (invoices)
-    │   ├── currency.py                   # Live currency conversion (ExchangeRate API)
+    │   ├── currency.py                   # Currency conversion with historical rates (Frankfurter API)
     │   ├── provisioning.py               # SaaS tenant provisioning
     │   └── api_errors.py                 # Error hierarchy + simulator
     │
@@ -539,7 +714,7 @@ For detailed production enhancements (23 items with implementation ideas, Salesf
 | **Workflow & Notifications** | 3 | Task monitoring, escalation hierarchy, approval workflows |
 | **Event-Driven Integration** | 2 | Webhook-based task completion, optimized batch fetching |
 | **Salesforce & CRM Scenarios** | 5 | Account hierarchies, multi-opportunity handling, owner validation, stale deal detection |
-| **Invoice & Financial Scenarios** | 4 | Installments, credit memos, payment discounts, cross-system reconciliation (multi-currency and underpayment now implemented) |
+| **Invoice & Financial Scenarios** | 4 | Installments, credit memos, payment discounts, cross-system reconciliation (multi-currency with historical rates and underpayment detection now implemented) |
 | **Frontend & Observability** | 1 | Real-time CS dashboard |
 | **LLM Resilience & Multi-Model Fallback** | 2 | Secondary LLM providers, unified gateway via LiteLLM |
 | **RAG & Context Engineering** | 2 | Vector-based retrieval for risk analysis, historical predictive scoring |

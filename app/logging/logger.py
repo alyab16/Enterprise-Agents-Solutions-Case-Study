@@ -21,6 +21,9 @@ LOG_FILE = os.path.join(LOG_DIR, "onboarding.log")
 # ----------------------------
 logger = logging.getLogger("onboarding_agent")
 logger.setLevel(logging.INFO)
+# Prevent log records from bubbling up to the root logger (which Logfire/OTEL
+# may have claimed). We manage our own handlers explicitly.
+logger.propagate = False
 
 # Formatter
 formatter = logging.Formatter(
@@ -37,10 +40,11 @@ file_handler = logging.FileHandler(LOG_FILE)
 file_handler.setFormatter(formatter)
 file_handler.setLevel(logging.INFO)
 
-# Avoid duplicate handlers on reload
-if not logger.handlers:
-    logger.addHandler(console_handler)
-    logger.addHandler(file_handler)
+# Always attach our handlers. Clear any that tracing backends may have injected
+# so we have exactly the two we expect.
+logger.handlers.clear()
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
 
 
 def now_iso() -> str:
