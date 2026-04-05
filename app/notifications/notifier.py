@@ -265,6 +265,47 @@ The StackAdapt Team
     )
 
 
+def notify_onboarding_escalation(
+    account_name: str,
+    account_id: str,
+    reason: str,
+    progress_snapshot: dict,
+    correlation_id: str = "",
+) -> dict:
+    """Send Slack notification for escalated/stalled onboarding."""
+
+    pct = progress_snapshot.get("completion", 0)
+    days = progress_snapshot.get("days_since_provisioning", 0)
+    overdue = progress_snapshot.get("overdue_count", 0)
+    blocked = progress_snapshot.get("blocked_count", 0)
+
+    message = f"""🔔 *Onboarding Escalation* for {account_name}
+
+*Reason:* {reason}
+
+*Progress Snapshot:*
+• Completion: {pct}%
+• Days since provisioning: {days}
+• Overdue tasks: {overdue}
+• Blocked tasks: {blocked}
+
+*Next Steps:*
+1. Review blocked/overdue tasks
+2. Contact customer if unresponsive
+3. Assign additional CS resources if needed
+
+<https://crm.demo/accounts/{account_id}|View in Salesforce>
+"""
+
+    return send_slack_message(
+        channel="#cs-onboarding-escalations",
+        message=message,
+        account_id=account_id,
+        correlation_id=correlation_id,
+        urgency="high",
+    )
+
+
 def notify_finance_overdue_invoice(
     account_name: str,
     account_id: str,

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:ai.pydantic.dev)",
+      "WebSearch",
+      "Bash(python:*)",
+      "Bash(pdflatex -interaction=nonstopmode Solution_Design_Document.tex)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(*.pem)",
+      "Read(*.key)",
+      "Read(~/.ssh/**)"
+    ]
+  }
+}

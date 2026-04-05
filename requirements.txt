@@ -25,3 +25,7 @@ opentelemetry-exporter-otlp>=1.20.0
 
 # Optional: for better logging
 rich>=13.0.0
+
+# UI
+streamlit>=1.30.0
+requests>=2.31.0

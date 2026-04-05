@@ -56,5 +56,45 @@ def get_provisioning_status(account_id: str) -> dict:
     return provisioning.get_provisioning_status(account_id)
 
 
+@mcp.tool()
+def check_onboarding_progress(account_id: str) -> dict:
+    """Get onboarding progress dashboard: completion %, health status, overdue tasks."""
+    from app.integrations import provisioning
+
+    return provisioning.check_onboarding_progress(account_id)
+
+
+@mcp.tool()
+def identify_onboarding_risks(account_id: str) -> dict:
+    """Detect risks needing CS attention: stalled progress, overdue tasks, blocked items."""
+    from app.integrations import provisioning
+
+    return provisioning.identify_onboarding_risks(account_id)
+
+
+@mcp.tool()
+def send_task_reminder(account_id: str, task_id: str, recipient: str = "", message: str = "") -> dict:
+    """Send a reminder about a pending onboarding task."""
+    from app.integrations import provisioning
+
+    return provisioning.send_task_reminder(account_id, task_id, recipient, message)
+
+
+@mcp.tool()
+def escalate_stalled_onboarding(account_id: str, reason: str = "") -> dict:
+    """Escalate a stalled onboarding to CS management via Slack."""
+    from app.integrations import provisioning
+
+    return provisioning.escalate_stalled_onboarding(account_id, reason)
+
+
+@mcp.tool()
+def update_task_status(account_id: str, task_id: str, status: str, notes: str = "") -> dict:
+    """Update an onboarding task status (pending, in_progress, completed, blocked, skipped)."""
+    from app.integrations import provisioning
+
+    return provisioning.update_task_status(account_id, task_id, status, notes=notes or None)
+
+
 if __name__ == "__main__":
     mcp.run()

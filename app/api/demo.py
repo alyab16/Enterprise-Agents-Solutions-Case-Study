@@ -4,6 +4,7 @@ Demo API endpoints for showcasing the onboarding agent.
 
 from fastapi import APIRouter, Query
 from fastapi.responses import HTMLResponse, FileResponse
+from pydantic import BaseModel
 from app.agent import run_onboarding_async
 from app.notifications import get_sent_notifications, clear_notifications
 from app.integrations.provisioning import reset_all as reset_provisioning
@@ -69,6 +70,9 @@ ALL_SCENARIOS = [
 
 ERROR_SIMULATION_IDS = {"AUTH-ERROR", "PERM-ERROR", "SERVER-ERROR", "RATE-ERROR", "VALIDATION-ERROR"}
 
+# In-memory store for ALL onboarding run results (not just provisioned ones)
+_ALL_RUN_RESULTS: dict[str, dict] = {}
+
 
 def is_error_simulation_scenario(account_id: str) -> bool:
     return account_id in ERROR_SIMULATION_IDS or account_id.endswith("-ERROR")
@@ -104,6 +108,9 @@ async def run_demo_scenario(account_id: str, generate_report: bool = False):
         "provisioning": result.get("provisioning"),
         "summary": result.get("human_summary"),
     }
+
+    # Store result for dashboard
+    _ALL_RUN_RESULTS[account_id] = response
 
     if generate_report:
         if is_error_simulation_scenario(account_id):
@@ -154,6 +161,17 @@ async def run_all_scenarios(generate_reports: bool = False):
             scenario_result["error_type"] = scenario.get("error_type")
 
         results.append(scenario_result)
+
+        # Store for dashboard
+        _ALL_RUN_RESULTS[account_id] = {
+            "account_id": account_id,
+            "decision": result.get("decision"),
+            "violations": result.get("violations"),
+            "warnings": result.get("warnings"),
+            "provisioning": result.get("provisioning"),
+            "summary": result.get("human_summary"),
+            "scenario_name": scenario["name"],
+        }
 
         if generate_reports and scenario["category"] != "error_simulation":
             files = generate_full_run_report(result)
@@ -259,6 +277,8 @@ async def reset_demo():
     clear_notifications()
     reset_provisioning()
     disable_error_simulation()
+    _ALL_RUN_RESULTS.clear()
+    _CHAT_SESSIONS.clear()
 
     if os.path.exists(REPORTS_DIR):
         for f in os.listdir(REPORTS_DIR):
@@ -502,6 +522,127 @@ async def update_task_status(
         "task": updated_task,
         "onboarding_progress": prov_status.get("onboarding_tasks", {}),
     }
+
+
+# ============================================================================
+# CS ASSISTANT / MONITORING ENDPOINTS
+# ============================================================================
+
+@router.get("/progress/{account_id}")
+async def get_onboarding_progress(account_id: str):
+    """Get onboarding progress dashboard for an account."""
+    from app.integrations import provisioning
+    return provisioning.check_onboarding_progress(account_id)
+
+
+@router.get("/risks/{account_id}")
+async def get_onboarding_risks(account_id: str):
+    """Identify risks for an active onboarding."""
+    from app.integrations import provisioning
+    return provisioning.identify_onboarding_risks(account_id)
+
+
+@router.post("/remind/{account_id}/{task_id}")
+async def remind_task(account_id: str, task_id: str, recipient: str = "", message: str = ""):
+    """Send a reminder about a pending task."""
+    from app.integrations import provisioning
+    return provisioning.send_task_reminder(account_id, task_id, recipient, message)
+
+
+@router.post("/escalate/{account_id}")
+async def escalate_onboarding(account_id: str, reason: str = ""):
+    """Escalate a stalled onboarding to CS management."""
+    from app.integrations import provisioning
+    return provisioning.escalate_stalled_onboarding(account_id, reason)
+
+
+@router.get("/active-onboardings")
+async def list_active_onboardings():
+    """List all onboarding run results — provisioned AND blocked/escalated."""
+    from app.integrations import provisioning
+
+    results = []
+    for account_id, run in _ALL_RUN_RESULTS.items():
+        decision = run.get("decision", "UNKNOWN")
+
+        if decision == "PROCEED":
+            # Get live progress from provisioning system
+            progress = provisioning.check_onboarding_progress(account_id)
+            results.append({
+                "account_id": account_id,
+                "decision": decision,
+                "scenario_name": run.get("scenario_name", ""),
+                "tenant_id": progress.get("tenant_id"),
+                "tier": progress.get("tier"),
+                "completion_percentage": progress.get("completion_percentage", 0),
+                "health_status": progress.get("health_status", "on_track"),
+                "days_since_provisioning": progress.get("days_since_provisioning", 0),
+                "overdue_count": len(progress.get("overdue_tasks", [])),
+                "blocked_count": progress.get("task_breakdown", {}).get("blocked", 0),
+                "summary": run.get("summary", ""),
+            })
+        else:
+            violations = run.get("violations", {})
+            warnings = run.get("warnings", {})
+            results.append({
+                "account_id": account_id,
+                "decision": decision,
+                "scenario_name": run.get("scenario_name", ""),
+                "tenant_id": None,
+                "tier": None,
+                "completion_percentage": 0,
+                "health_status": "blocked" if decision == "BLOCK" else "escalated",
+                "days_since_provisioning": 0,
+                "overdue_count": 0,
+                "blocked_count": 0,
+                "violation_count": sum(len(v) for v in violations.values()),
+                "warning_count": sum(len(v) for v in warnings.values()),
+                "violations": violations,
+                "warnings": warnings,
+                "summary": run.get("summary", ""),
+            })
+
+    return {"onboardings": results}
+
+
+class ChatRequest(BaseModel):
+    message: str
+    account_id: str = "ACME-001"
+    session_id: str = "default"
+
+
+# Server-side chat session storage: session_id -> message_history
+_CHAT_SESSIONS: dict[str, list] = {}
+
+
+@router.post("/chat")
+async def chat_with_agent(req: ChatRequest):
+    """Chat with the CS assistant agent (retains conversation history)."""
+    from app.agent.onboarding_agent import cs_assistant_agent
+    from app.agent.dependencies import OnboardingDeps
+
+    deps = OnboardingDeps(account_id=req.account_id)
+
+    # Retrieve prior conversation history for this session
+    message_history = _CHAT_SESSIONS.get(req.session_id)
+
+    result = await cs_assistant_agent.run(
+        req.message,
+        deps=deps,
+        message_history=message_history,
+    )
+
+    # Store updated history for next turn
+    _CHAT_SESSIONS[req.session_id] = result.all_messages()
+
+    return {"response": result.output, "account_id": req.account_id}
+
+
+@router.post("/chat/reset")
+async def reset_chat(session_id: str = "default"):
+    """Clear chat history for a session."""
+    _CHAT_SESSIONS.pop(session_id, None)
+    return {"status": "cleared", "session_id": session_id}
 
 
 @router.get("/tasks/{account_id}/next-actions")

@@ -183,6 +183,7 @@ MOCK_CLM_DB: Dict[str, Dict[str, Any]] = {
         "id": "CLM-CTR-001",
         "contract_id": "CLM-CTR-001",
         "external_id": "ACME-001",
+        "salesforce_contract_id": "8008Z000000CONTR",
         "name": "ACME Corp - Enterprise Service Agreement",
         "status": "EXECUTED",
         "status_details": {
@@ -246,6 +247,7 @@ MOCK_CLM_DB: Dict[str, Dict[str, Any]] = {
         "id": "CLM-CTR-002",
         "contract_id": "CLM-CTR-002",
         "external_id": "BETA-002",
+        "salesforce_contract_id": "CONTRACT-DRAFT",
         "name": "Beta Industries - Growth Service Agreement",
         "status": "PENDING_SIGNATURE",
         "status_details": {
@@ -290,6 +292,7 @@ MOCK_CLM_DB: Dict[str, Dict[str, Any]] = {
         "id": "CLM-CTR-003",
         "contract_id": "CLM-CTR-003",
         "external_id": "GAMMA-003",
+        "salesforce_contract_id": "CONTRACT-PENDING",
         "name": "Gamma Startup - Starter Agreement",
         "status": "EXECUTED",
         "status_details": {
@@ -347,6 +350,7 @@ MOCK_CLM_DB: Dict[str, Dict[str, Any]] = {
         "id": "CLM-CTR-005",
         "contract_id": "CLM-CTR-005",
         "external_id": "FOREX-005",
+        "salesforce_contract_id": "8008Z000000FOREX",
         "name": "Maple Payments - Growth Service Agreement",
         "status": "EXECUTED",
         "status_details": {
@@ -402,6 +406,7 @@ MOCK_CLM_DB: Dict[str, Dict[str, Any]] = {
         "id": "CLM-CTR-006",
         "contract_id": "CLM-CTR-006",
         "external_id": "PARTIAL-006",
+        "salesforce_contract_id": "8008Z000000PARTL",
         "name": "Summit Cloud - Enterprise Service Agreement",
         "status": "EXECUTED",
         "status_details": {
@@ -560,6 +565,22 @@ class CLMClient:
         
         return contract
     
+    def get_contract_by_sf_id(self, sf_contract_id: str) -> Optional[Dict[str, Any]]:
+        """
+        GET /api/v1/contracts?salesforce_contract_id={sf_contract_id}
+
+        Search for contract by Salesforce Contract ID (cross-system link).
+        """
+        self._make_request("GET", f"/contracts?salesforce_contract_id={sf_contract_id}")
+
+        for contract in MOCK_CLM_DB.values():
+            if contract.get("_simulate_error"):
+                continue
+            if contract.get("salesforce_contract_id") == sf_contract_id:
+                return contract
+
+        return None
+
     def get_signatories(self, contract_id: str) -> List[Dict[str, Any]]:
         """
         GET /api/v1/contracts/{id}/signatories
@@ -727,6 +748,50 @@ def get_contract(account_id: str) -> Dict[str, Any]:
             "error": str(e),
             "error_code": e.error_code,
             "http_status": e.status_code,
+            "system": "CLM",
+        }
+
+
+def get_contract_by_sf_contract_id(sf_contract_id: str) -> Dict[str, Any]:
+    """
+    Fetch CLM contract by its linked Salesforce Contract ID.
+
+    This is the chained lookup: Salesforce Contract.Id -> CLM contract.
+    Returns a simplified structure for the agent.
+    """
+    client = get_client()
+
+    try:
+        contract = client.get_contract_by_sf_id(sf_contract_id)
+
+        if not contract:
+            return {
+                "contract_id": None,
+                "status": "NOT_FOUND",
+                "error": f"No CLM contract linked to Salesforce Contract {sf_contract_id}"
+            }
+
+        return _transform_contract_for_agent(contract)
+
+    except CLMAuthenticationError as e:
+        log_event("clm.api.auth_error", error=str(e), sf_contract_id=sf_contract_id)
+        return {
+            "contract_id": None,
+            "status": "AUTH_ERROR",
+            "error": str(e),
+            "error_code": e.error_code,
+            "http_status": e.status_code,
+            "system": "CLM",
+        }
+
+    except (CLMError, APIError) as e:
+        log_event("clm.api.error", error=str(e), sf_contract_id=sf_contract_id)
+        return {
+            "contract_id": None,
+            "status": "API_ERROR",
+            "error": str(e),
+            "error_code": getattr(e, 'error_code', 'CLM_ERROR'),
+            "http_status": getattr(e, 'status_code', 500),
             "system": "CLM",
         }
 

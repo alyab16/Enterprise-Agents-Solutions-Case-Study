@@ -85,6 +85,7 @@ MOCK_INVOICES_DB: Dict[str, Dict[str, Any]] = {
         "id": "1001",
         "tranId": "INV-2024-001",
         "externalId": "ACME-001-INV",
+        "clmContractRef": "CLM-CTR-001",
         "entity": {
             "id": "101",
             "refName": "ACME Corp"
@@ -158,6 +159,7 @@ MOCK_INVOICES_DB: Dict[str, Dict[str, Any]] = {
         "id": "1002",
         "tranId": "INV-2024-002",
         "externalId": "BETA-002-INV",
+        "clmContractRef": "CLM-CTR-002",
         "entity": {
             "id": "102",
             "refName": "Beta Industries"
@@ -223,6 +225,7 @@ MOCK_INVOICES_DB: Dict[str, Dict[str, Any]] = {
         "id": "1003",
         "tranId": "INV-2023-089",
         "externalId": "GAMMA-003-INV",
+        "clmContractRef": "CLM-CTR-003",
         "entity": {
             "id": "103",
             "refName": "Gamma Startup"
@@ -325,6 +328,7 @@ MOCK_INVOICES_DB: Dict[str, Dict[str, Any]] = {
         "id": "1005",
         "tranId": "INV-2024-005",
         "externalId": "FOREX-005-INV",
+        "clmContractRef": "CLM-CTR-005",
         "entity": {
             "id": "105",
             "refName": "Maple Payments Inc."
@@ -385,6 +389,7 @@ MOCK_INVOICES_DB: Dict[str, Dict[str, Any]] = {
         "id": "1006",
         "tranId": "INV-2024-006",
         "externalId": "PARTIAL-006-INV",
+        "clmContractRef": "CLM-CTR-006",
         "entity": {
             "id": "106",
             "refName": "Summit Cloud Solutions"
@@ -670,6 +675,29 @@ class NetSuiteClient:
         
         return response
     
+    def get_invoice_by_clm_ref(self, clm_contract_ref: str) -> Optional[Dict[str, Any]]:
+        """
+        Search for invoice by CLM contract reference.
+
+        Scans MOCK_INVOICES_DB for a record whose clmContractRef matches.
+        Returns the raw invoice dict, or None if not found.
+        """
+        log_event("netsuite.api.search_by_clm_ref", clm_contract_ref=clm_contract_ref)
+
+        self._make_request("GET", "/invoice", "invoice", "read",
+                           params={"q": f'clmContractRef IS "{clm_contract_ref}"'})
+
+        for invoice in MOCK_INVOICES_DB.values():
+            if invoice.get("clmContractRef") == clm_contract_ref:
+                log_event(
+                    "netsuite.api.search_by_clm_ref.found",
+                    clm_contract_ref=clm_contract_ref,
+                    invoice_id=invoice.get("id"),
+                )
+                return invoice
+
+        return None
+
     def get_invoices_by_customer(self, customer_id: str) -> List[Dict[str, Any]]:
         """
         GET /invoice?q=entity.id IS {customer_id}
@@ -804,6 +832,42 @@ def get_invoice(account_id: str) -> Dict[str, Any]:
             "error": str(e),
             "error_code": e.error_code,
         }
+
+
+def get_invoice_by_clm_ref(clm_contract_ref: str) -> Dict[str, Any]:
+    """
+    Fetch invoice data by CLM contract reference (e.g. "CLM-CTR-001").
+
+    Used for data chaining: CLM contract → NetSuite invoice lookup.
+    Returns the same agent-friendly format as get_invoice().
+    """
+    client = get_client()
+
+    try:
+        invoice = client.get_invoice_by_clm_ref(clm_contract_ref)
+
+        if not invoice:
+            log_event("netsuite.invoice.clm_ref_not_found", clm_contract_ref=clm_contract_ref)
+            return {
+                "invoice_id": None,
+                "status": "NOT_FOUND",
+                "error": f"No invoice found for CLM contract ref {clm_contract_ref}",
+            }
+
+        account_id = invoice.get("externalId", "").replace("-INV", "") if invoice.get("externalId") else "UNKNOWN"
+        return _transform_invoice_for_agent(invoice, account_id)
+
+    except NetSuiteAuthenticationError as e:
+        log_event("netsuite.api.auth_error", error=str(e), clm_ref=clm_contract_ref)
+        return {"invoice_id": None, "status": "AUTH_ERROR", "error": str(e), "error_code": e.error_code}
+
+    except NetSuiteAuthorizationError as e:
+        log_event("netsuite.api.permission_error", error=str(e), clm_ref=clm_contract_ref)
+        return {"invoice_id": None, "status": "PERMISSION_ERROR", "error": str(e), "error_code": e.error_code}
+
+    except (NetSuiteError, APIError) as e:
+        log_event("netsuite.api.error", error=str(e), clm_ref=clm_contract_ref)
+        return {"invoice_id": None, "status": "API_ERROR", "error": str(e)}
 
 
 def _transform_invoice_for_agent(invoice: Dict[str, Any], account_id: str) -> Dict[str, Any]:

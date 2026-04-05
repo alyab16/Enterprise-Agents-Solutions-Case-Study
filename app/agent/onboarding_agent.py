@@ -71,20 +71,28 @@ You have tools to interact with Salesforce, CLM (Contract Lifecycle
 Management), NetSuite (invoicing), a provisioning system, a notification
 system, and a business rule validation engine. Use them as follows:
 
-1. **GATHER DATA** — You MUST fetch data from ALL systems before validating:
-   a) Call `fetch_salesforce_account` (no args needed — uses context)
-   b) ALWAYS call `fetch_salesforce_user` with the OwnerId from the account
-   c) Call `fetch_salesforce_opportunity` (no args needed)
-   d) Call `fetch_salesforce_contract` (no args needed)
-   e) Call `fetch_clm_contract` (no args needed)
-   f) Call `fetch_netsuite_invoice` (no args needed)
+1. **GATHER DATA** — You MUST fetch data from ALL systems before validating.
+   Data flows sequentially: Sales → Contract → CLM → Invoice. Each system's
+   output provides lookup keys for the next system in the chain.
+
+   a) Call `fetch_salesforce_account` (no args — uses onboarding context)
+   b) Call `fetch_salesforce_user` with the OwnerId from the account result
+   c) Call `fetch_salesforce_opportunity` (no args — uses account context)
+   d) Call `fetch_salesforce_contract` — pass `contract_id` from the
+      Opportunity's ContractId field if available (enables direct lookup
+      instead of account-based search)
+   e) Call `fetch_clm_contract` — pass `salesforce_contract_id` from the
+      SF Contract's Id field if available (chains CRM → CLM lookup)
+   f) Call `fetch_netsuite_invoice` — pass `clm_contract_ref` from the
+      CLM contract's contract_id field if available (chains CLM → ERP lookup)
    g) Optionally call `convert_currency` to convert invoice amounts to CAD
       (StackAdapt is a Canadian company — CAD context is useful)
 
-   Steps b-f can be called in parallel after step a completes.
+   Steps b-c can run in parallel after step a. Steps d→e→f are sequential
+   because each uses the previous step's output as a lookup key. If a
+   chaining parameter is not available (e.g., Opportunity has no ContractId),
+   omit it — the tool will fall back to account-based lookup automatically.
 
-   NOTE: Most fetch tools automatically use the onboarding account ID from context.
-   Only `fetch_salesforce_user` requires an explicit user_id argument.
    You MUST call ALL fetch tools before calling validate_business_rules.
 
    IMPORTANT: If any fetch returns a response with "status": "API_ERROR"
@@ -246,21 +254,28 @@ async def fetch_salesforce_opportunity(
 @onboarding_agent.tool
 async def fetch_salesforce_contract(
     ctx: RunContext[OnboardingDeps],
+    contract_id: str = "",
 ) -> dict:
     """
-    Fetch the Salesforce contract record linked to the onboarding account.
+    Fetch the Salesforce contract record (CRM contract, not CLM).
 
-    Uses the account ID from the current onboarding context automatically.
-    This is the CRM contract record (not the CLM contract).
+    Data chaining: pass `contract_id` from the Opportunity's ContractId
+    field for a direct lookup. If omitted, falls back to account-based search.
     Returns contract details including Status and ownership.
     """
     from app.integrations import salesforce
 
     account_id = ctx.deps.account_id
-    log_event("tool.salesforce.get_contract", account_id=account_id,
-              correlation_id=ctx.deps.correlation_id)
 
-    result = salesforce.get_contract_by_account(account_id)
+    if contract_id:
+        log_event("tool.salesforce.get_contract", contract_id=contract_id,
+                  correlation_id=ctx.deps.correlation_id)
+        result = salesforce.get_contract(contract_id)
+    else:
+        log_event("tool.salesforce.get_contract", account_id=account_id,
+                  correlation_id=ctx.deps.correlation_id)
+        result = salesforce.get_contract_by_account(account_id)
+
     if result is None:
         return {"status": "NOT_FOUND", "account_id": account_id}
     ctx.deps.collected_contract = result
@@ -274,22 +289,31 @@ async def fetch_salesforce_contract(
 @onboarding_agent.tool
 async def fetch_clm_contract(
     ctx: RunContext[OnboardingDeps],
+    salesforce_contract_id: str = "",
 ) -> dict:
     """
-    Fetch CLM (Contract Lifecycle Management) contract for the onboarding account.
+    Fetch CLM (Contract Lifecycle Management) contract.
 
-    Uses the account ID from the current onboarding context automatically.
-    Returns contract status (EXECUTED, SIGNED, DRAFT, PENDING_SIGNATURE, etc.),
-    signatories with sign status, effective/expiry dates, and key terms including
-    sla_tier and payment_terms. Check for error statuses (AUTH_ERROR, SERVER_ERROR).
+    Data chaining: pass `salesforce_contract_id` from the SF Contract's Id
+    field for a cross-system lookup (CRM → CLM). If omitted, falls back to
+    account-based search. Returns contract status (EXECUTED, SIGNED, DRAFT,
+    PENDING_SIGNATURE, etc.), signatories, effective/expiry dates, and key
+    terms including sla_tier and payment_terms.
     """
     from app.integrations import clm
 
     account_id = ctx.deps.account_id
-    log_event("tool.clm.get_contract", account_id=account_id,
-              correlation_id=ctx.deps.correlation_id)
 
-    result = clm.get_contract(account_id)
+    if salesforce_contract_id:
+        log_event("tool.clm.get_contract_by_sf_id",
+                  salesforce_contract_id=salesforce_contract_id,
+                  correlation_id=ctx.deps.correlation_id)
+        result = clm.get_contract_by_sf_contract_id(salesforce_contract_id)
+    else:
+        log_event("tool.clm.get_contract", account_id=account_id,
+                  correlation_id=ctx.deps.correlation_id)
+        result = clm.get_contract(account_id)
+
     ctx.deps.collected_clm = result
     return result
 
@@ -301,22 +325,31 @@ async def fetch_clm_contract(
 @onboarding_agent.tool
 async def fetch_netsuite_invoice(
     ctx: RunContext[OnboardingDeps],
+    clm_contract_ref: str = "",
 ) -> dict:
     """
-    Fetch invoice/payment data from NetSuite for the onboarding account.
+    Fetch invoice/payment data from NetSuite.
 
-    Uses the account ID from the current onboarding context automatically.
-    Returns invoice details including status (PAID, OPEN, OVERDUE, DRAFT,
-    VOIDED, CANCELLED), total, amount_remaining, due_date, and days_overdue.
-    Check for error statuses (AUTH_ERROR, SERVER_ERROR).
+    Data chaining: pass `clm_contract_ref` from the CLM contract's
+    contract_id field for a cross-system lookup (CLM → ERP). If omitted,
+    falls back to account-based search. Returns invoice details including
+    status (PAID, OPEN, OVERDUE, DRAFT, VOIDED, CANCELLED), total,
+    amount_remaining, due_date, and days_overdue.
     """
     from app.integrations import netsuite
 
     account_id = ctx.deps.account_id
-    log_event("tool.netsuite.get_invoice", account_id=account_id,
-              correlation_id=ctx.deps.correlation_id)
 
-    result = netsuite.get_invoice(account_id)
+    if clm_contract_ref:
+        log_event("tool.netsuite.get_invoice_by_clm_ref",
+                  clm_contract_ref=clm_contract_ref,
+                  correlation_id=ctx.deps.correlation_id)
+        result = netsuite.get_invoice_by_clm_ref(clm_contract_ref)
+    else:
+        log_event("tool.netsuite.get_invoice", account_id=account_id,
+                  correlation_id=ctx.deps.correlation_id)
+        result = netsuite.get_invoice(account_id)
+
     ctx.deps.collected_invoice = result
     return result
 
@@ -615,6 +648,114 @@ async def convert_currency(
 # Financial alignment tools
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Post-provisioning monitoring tools (CS assistant mode)
+# ---------------------------------------------------------------------------
+
+@onboarding_agent.tool
+async def check_onboarding_progress(
+    ctx: RunContext[OnboardingDeps],
+    account_id: str,
+) -> dict:
+    """
+    Get a dashboard view of onboarding progress for a provisioned account.
+
+    Returns completion %, task breakdown by status, overdue/blocked counts,
+    days since provisioning, and a health_status (on_track / at_risk / stalled).
+    """
+    from app.integrations import provisioning
+
+    log_event("tool.provisioning.check_progress", account_id=account_id,
+              correlation_id=ctx.deps.correlation_id)
+    return provisioning.check_onboarding_progress(account_id)
+
+
+@onboarding_agent.tool
+async def identify_onboarding_risks(
+    ctx: RunContext[OnboardingDeps],
+    account_id: str,
+) -> dict:
+    """
+    Detect risks and problems needing CS attention for a provisioned account.
+
+    Checks for: customer not logged in after 3 days, SSO not configured after
+    kickoff, tasks blocked, onboarding stalling (<30% after 7 days), customer
+    actions overdue.
+    """
+    from app.integrations import provisioning
+
+    log_event("tool.provisioning.identify_risks", account_id=account_id,
+              correlation_id=ctx.deps.correlation_id)
+    return provisioning.identify_onboarding_risks(account_id)
+
+
+@onboarding_agent.tool
+async def send_task_reminder(
+    ctx: RunContext[OnboardingDeps],
+    account_id: str,
+    task_id: str,
+    recipient: str = "",
+    message: str = "",
+) -> dict:
+    """
+    Send a reminder about a pending onboarding task to the assigned owner.
+
+    Use when a task is overdue or at risk of being missed.
+    """
+    from app.integrations import provisioning
+
+    log_event("tool.provisioning.send_reminder", account_id=account_id,
+              task_id=task_id, correlation_id=ctx.deps.correlation_id)
+    return provisioning.send_task_reminder(account_id, task_id, recipient, message)
+
+
+@onboarding_agent.tool
+async def escalate_stalled_onboarding(
+    ctx: RunContext[OnboardingDeps],
+    account_id: str,
+    reason: str = "",
+) -> dict:
+    """
+    Escalate a stalled onboarding to CS management.
+
+    Posts to #cs-onboarding-escalations with progress details. Use when
+    onboarding is stalled (blocked tasks, low completion after many days).
+    """
+    from app.integrations import provisioning
+
+    log_event("tool.provisioning.escalate", account_id=account_id,
+              correlation_id=ctx.deps.correlation_id)
+    return provisioning.escalate_stalled_onboarding(account_id, reason)
+
+
+@onboarding_agent.tool
+async def update_onboarding_task(
+    ctx: RunContext[OnboardingDeps],
+    account_id: str,
+    task_id: str,
+    status: str,
+    notes: str = "",
+) -> dict:
+    """
+    Update the status of an onboarding task.
+
+    Valid statuses: pending, in_progress, completed, blocked, skipped.
+    Use to mark tasks as done, flag blockers, or skip inapplicable tasks.
+    """
+    from app.integrations import provisioning
+
+    log_event("tool.provisioning.update_task", account_id=account_id,
+              task_id=task_id, status=status,
+              correlation_id=ctx.deps.correlation_id)
+    return provisioning.update_task_status(
+        account_id, task_id, status, completed_by="cs_assistant", notes=notes or None
+    )
+
+
+# ---------------------------------------------------------------------------
+# Financial alignment tools
+# ---------------------------------------------------------------------------
+
 FINANCIAL_ALIGNMENT_THRESHOLD = 0.02  # 2%
 
 
@@ -735,3 +876,60 @@ async def check_financial_alignment(
         "warnings": warnings,
         "details": details,
     }
+
+
+# ---------------------------------------------------------------------------
+# CS Assistant Agent (free-form text for chat interactions)
+# ---------------------------------------------------------------------------
+
+CS_ASSISTANT_PROMPT = """\
+You are a Customer Success assistant for StackAdapt. You help CS managers
+monitor and manage customer onboardings by answering questions and taking
+actions using the tools available to you.
+
+## CAPABILITIES
+
+You can:
+- **Check onboarding progress** — completion %, health status, overdue tasks
+- **Identify risks** — detect problems that need attention
+- **Send reminders** — nudge customers or CS team about pending tasks
+- **Update tasks** — mark tasks as completed, blocked, or in progress
+- **Escalate** — flag stalled onboardings to CS management
+- **Run new onboardings** — fetch data, validate, and process new accounts
+- **Check financials** — verify deal/invoice alignment
+
+## INTERACTION STYLE
+
+- Be concise and actionable — CS managers are busy
+- When showing progress, highlight what needs attention first
+- Proactively suggest next steps based on what you find
+- If you detect risks, recommend specific actions
+- Use the account_id the user provides (e.g., "ACME-001")
+
+## EXAMPLES
+
+User: "What's the status of ACME-001's onboarding?"
+→ Use check_onboarding_progress, then summarize with next actions
+
+User: "Are there any risks with ACME-001?"
+→ Use identify_onboarding_risks, then recommend actions
+
+User: "Send a reminder about the login task"
+→ Use send_task_reminder with the relevant task ID
+
+User: "Onboard BETA-002"
+→ Run the full onboarding workflow (fetch → validate → decide → act)
+"""
+
+cs_assistant_agent = Agent(
+    model=_select_model(),
+    deps_type=OnboardingDeps,
+    output_type=str,
+    system_prompt=CS_ASSISTANT_PROMPT,
+    retries=3,
+)
+
+# Share all tools from the onboarding agent with the CS assistant
+# by registering the same tool functions
+for _tool_name, _tool_def in onboarding_agent._function_toolset.tools.items():
+    cs_assistant_agent._function_toolset.tools[_tool_name] = _tool_def

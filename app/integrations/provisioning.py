@@ -439,3 +439,234 @@ def reset_all():
     """Reset all provisioned accounts (for testing)."""
     _PROVISIONED_ACCOUNTS.clear()
     _ONBOARDING_TASKS.clear()
+
+
+# ============================================================================
+# MONITORING & CS ASSISTANT FUNCTIONS
+# ============================================================================
+
+def check_onboarding_progress(account_id: str) -> dict:
+    """
+    Get a dashboard-style view of onboarding progress for an account.
+
+    Returns completion %, task breakdown by status, overdue/blocked counts,
+    days since provisioning, and a health_status assessment.
+    """
+    if account_id not in _PROVISIONED_ACCOUNTS:
+        return {"status": "NOT_PROVISIONED", "account_id": account_id}
+
+    prov = _PROVISIONED_ACCOUNTS[account_id]
+    tasks = _ONBOARDING_TASKS.get(account_id, [])
+    today = datetime.utcnow()
+    prov_date = datetime.fromisoformat(prov["provisioned_at"])
+    days_since = (today - prov_date).days
+
+    total = len(tasks)
+    completed = sum(1 for t in tasks if t.status == TaskStatus.COMPLETED)
+    skipped = sum(1 for t in tasks if t.status == TaskStatus.SKIPPED)
+    pending = sum(1 for t in tasks if t.status == TaskStatus.PENDING)
+    in_progress = sum(1 for t in tasks if t.status == TaskStatus.IN_PROGRESS)
+    blocked = sum(1 for t in tasks if t.status == TaskStatus.BLOCKED)
+
+    actionable = total - skipped
+    pct = round((completed / actionable) * 100) if actionable > 0 else 0
+
+    overdue = get_overdue_tasks(account_id)
+
+    # Health assessment
+    if blocked > 0 or len(overdue) >= 3:
+        health = "stalled"
+    elif len(overdue) > 0 or (pct < 30 and days_since > 7):
+        health = "at_risk"
+    else:
+        health = "on_track"
+
+    return {
+        "account_id": account_id,
+        "tenant_id": prov.get("tenant_id"),
+        "tier": prov.get("tier"),
+        "days_since_provisioning": days_since,
+        "completion_percentage": pct,
+        "health_status": health,
+        "task_breakdown": {
+            "total": total,
+            "completed": completed,
+            "pending": pending,
+            "in_progress": in_progress,
+            "blocked": blocked,
+            "skipped": skipped,
+        },
+        "overdue_tasks": overdue,
+        "blocked_tasks": get_blocked_tasks(account_id),
+        "next_actions": _get_task_summary(tasks).get("next_actions", []),
+    }
+
+
+def identify_onboarding_risks(account_id: str) -> dict:
+    """
+    Detect risks and problems that need CS attention.
+
+    Checks for: customer not logging in, SSO not configured after kickoff,
+    tasks blocked, onboarding stalling, customer actions overdue.
+    """
+    if account_id not in _PROVISIONED_ACCOUNTS:
+        return {"status": "NOT_PROVISIONED", "account_id": account_id}
+
+    prov = _PROVISIONED_ACCOUNTS[account_id]
+    tasks = _ONBOARDING_TASKS.get(account_id, [])
+    today = datetime.utcnow()
+    prov_date = datetime.fromisoformat(prov["provisioned_at"])
+    days_since = (today - prov_date).days
+    risks = []
+
+    # Risk: customer hasn't verified login within 3 days
+    login_task = next((t for t in tasks if "Verify Login" in t.name), None)
+    if login_task and login_task.status == TaskStatus.PENDING and days_since >= 3:
+        risks.append({
+            "severity": "high",
+            "risk": "Customer has not logged in",
+            "detail": f"{days_since} days since provisioning, login not verified",
+            "task_id": login_task.task_id,
+            "recommendation": "Send reminder email and Slack DM to account owner",
+        })
+
+    # Risk: SSO not configured after kickoff (Enterprise only)
+    sso_task = next((t for t in tasks if "SSO" in t.name and t.status != TaskStatus.SKIPPED), None)
+    kickoff_task = next((t for t in tasks if "Conduct Kickoff" in t.name), None)
+    if sso_task and kickoff_task and kickoff_task.status == TaskStatus.COMPLETED and sso_task.status == TaskStatus.PENDING:
+        risks.append({
+            "severity": "medium",
+            "risk": "SSO not configured after kickoff",
+            "detail": "Kickoff complete but SSO integration not started",
+            "task_id": sso_task.task_id,
+            "recommendation": "Follow up with customer IT team about SSO requirements",
+        })
+
+    # Risk: tasks blocked
+    blocked = [t for t in tasks if t.status == TaskStatus.BLOCKED]
+    for t in blocked:
+        risks.append({
+            "severity": "high",
+            "risk": f"Task blocked: {t.name}",
+            "detail": t.notes or "No details",
+            "task_id": t.task_id,
+            "recommendation": "Investigate blocker and unblock or escalate",
+        })
+
+    # Risk: onboarding stalling (<30% complete after 7 days)
+    total = len(tasks)
+    completed = sum(1 for t in tasks if t.status == TaskStatus.COMPLETED)
+    skipped = sum(1 for t in tasks if t.status == TaskStatus.SKIPPED)
+    actionable = total - skipped
+    pct = (completed / actionable * 100) if actionable > 0 else 0
+    if pct < 30 and days_since > 7:
+        risks.append({
+            "severity": "high",
+            "risk": "Onboarding stalling",
+            "detail": f"Only {pct:.0f}% complete after {days_since} days",
+            "recommendation": "Escalate to CS management — customer may need additional support",
+        })
+
+    # Risk: customer actions overdue
+    today_str = today.strftime("%Y-%m-%d")
+    overdue_customer = [
+        t for t in tasks
+        if t.owner == "customer"
+        and t.due_date and t.due_date < today_str
+        and t.status in [TaskStatus.PENDING, TaskStatus.IN_PROGRESS]
+    ]
+    for t in overdue_customer:
+        risks.append({
+            "severity": "medium",
+            "risk": f"Customer action overdue: {t.name}",
+            "detail": f"Due {t.due_date}, still {t.status.value}",
+            "task_id": t.task_id,
+            "recommendation": "Send task reminder to customer contact",
+        })
+
+    return {
+        "account_id": account_id,
+        "risk_count": len(risks),
+        "risks": risks,
+    }
+
+
+def send_task_reminder(
+    account_id: str,
+    task_id: str,
+    recipient: str = "",
+    message: str = "",
+) -> dict:
+    """
+    Send a reminder about a pending onboarding task.
+
+    In production this would send an email/Slack message. For the mock,
+    it records the reminder as a note on the task.
+    """
+    tasks = _ONBOARDING_TASKS.get(account_id, [])
+    task = next((t for t in tasks if t.task_id == task_id), None)
+
+    if not task:
+        return {"status": "NOT_FOUND", "task_id": task_id}
+
+    reminder_note = (
+        f"Reminder sent to {recipient or task.owner} "
+        f"at {datetime.utcnow().isoformat()}: {message or task.description}"
+    )
+    task.notes = (task.notes + " | " + reminder_note) if task.notes else reminder_note
+
+    return {
+        "status": "SENT",
+        "task_id": task_id,
+        "task_name": task.name,
+        "recipient": recipient or task.owner,
+        "message": message or f"Reminder: {task.name} is {task.status.value} (due {task.due_date})",
+        "channel": "email" if "@" in (recipient or "") else "slack",
+    }
+
+
+def escalate_stalled_onboarding(account_id: str, reason: str = "") -> dict:
+    """
+    Escalate a stalled onboarding to CS management.
+
+    Posts to #cs-onboarding-escalations with progress details.
+    """
+    progress = check_onboarding_progress(account_id)
+    if progress.get("status") == "NOT_PROVISIONED":
+        return {"status": "NOT_PROVISIONED", "account_id": account_id}
+
+    return {
+        "status": "ESCALATED",
+        "account_id": account_id,
+        "channel": "#cs-onboarding-escalations",
+        "reason": reason or "Onboarding stalled — needs management attention",
+        "progress_snapshot": {
+            "completion": progress["completion_percentage"],
+            "health": progress["health_status"],
+            "days_since_provisioning": progress["days_since_provisioning"],
+            "overdue_count": len(progress["overdue_tasks"]),
+            "blocked_count": progress["task_breakdown"]["blocked"],
+        },
+        "escalated_at": datetime.utcnow().isoformat(),
+    }
+
+
+def get_all_active_onboardings() -> List[dict]:
+    """
+    Get summary of all currently active onboardings.
+    Used by the Streamlit dashboard.
+    """
+    results = []
+    for account_id, prov in _PROVISIONED_ACCOUNTS.items():
+        progress = check_onboarding_progress(account_id)
+        results.append({
+            "account_id": account_id,
+            "tenant_id": prov.get("tenant_id"),
+            "tier": prov.get("tier"),
+            "completion_percentage": progress.get("completion_percentage", 0),
+            "health_status": progress.get("health_status", "unknown"),
+            "days_since_provisioning": progress.get("days_since_provisioning", 0),
+            "overdue_count": len(progress.get("overdue_tasks", [])),
+            "blocked_count": progress.get("task_breakdown", {}).get("blocked", 0),
+        })
+    return results
