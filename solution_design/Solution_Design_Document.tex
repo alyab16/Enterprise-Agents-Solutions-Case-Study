@@ -51,7 +51,7 @@
 %==============================================================================
 \section{Architecture Overview}
 
-The solution implements an \textbf{AI-powered automation agent} that orchestrates enterprise customer onboarding from deal closure through SaaS provisioning. Built with \textbf{Pydantic AI} for agentic tool calling and \textbf{FastAPI} for the REST interface, the agent uses native LLM tool calling to autonomously reason through 16 registered tools. Each tool is mirrored as a \textbf{FastMCP} server definition for MCP-style extraction. The agent integrates with multiple enterprise systems, validates business rules, assesses risks, and takes autonomous actions including tenant provisioning and task management.
+The solution implements an \textbf{AI-powered automation agent} that orchestrates enterprise customer onboarding from deal closure through SaaS provisioning. Built with \textbf{Pydantic AI} for agentic tool calling and \textbf{FastAPI} for the REST interface, the agent uses native LLM tool calling to autonomously reason through 21 registered tools. Each tool is mirrored as a \textbf{FastMCP} server definition for MCP-style extraction. A second \textbf{CS Assistant Agent} shares all tools but returns free-form text for conversational interaction via a \textbf{Streamlit UI}. Data flows sequentially across systems via \textbf{cross-system chaining}: Opportunity.ContractId $\rightarrow$ SF Contract.Id $\rightarrow$ CLM.salesforce\_contract\_id $\rightarrow$ Invoice.clmContractRef, with fallback to account-based lookups when chain links are missing.
 
 \vspace{0.15em}
 \subsection{System Integrations}
@@ -62,9 +62,9 @@ The solution implements an \textbf{AI-powered automation agent} that orchestrate
 \toprule
 \textbf{System} & \textbf{Objects \& Key Fields} \\
 \midrule
-\textbf{Salesforce CRM} & \texttt{Account} (Id, Name, IsDeleted, BillingCountry, Industry, OwnerId), \texttt{Opportunity} (StageName, Amount, CloseDate, AccountId, ContractId), \texttt{User} (IsActive, Email, ProfileId). \href{https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_list.htm}{\textcolor{blue}{[API Ref]}} \\
-\textbf{NetSuite ERP} & \texttt{Invoice} (status, dueDate, amountRemaining, total, tranId, entity). \href{https://system.netsuite.com/help/helpcenter/en_US/APIs/REST_API_Browser/record/v1/2023.1/index.html}{\textcolor{blue}{[API Ref]}} \\
-\textbf{CLM System} & Contract status (DRAFT/SENT/SIGNED/EXECUTED), signatories, effective\_date, expiry\_date, key\_terms. Mock simulating DocuSign CLM. \\
+\textbf{Salesforce CRM} & \texttt{Account} (Id, Name, IsDeleted, OwnerId), \texttt{Opportunity} (StageName, Amount, \textbf{ContractId}), \texttt{Contract} (\textbf{Id}, Status, StartDate), \texttt{User} (IsActive, Email). \href{https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_list.htm}{\textcolor{blue}{[API Ref]}} \\
+\textbf{CLM System} & contract\_id, status, \textbf{salesforce\_contract\_id} (chains from SF Contract.Id), signatories, key\_terms. Mock simulating DocuSign CLM. \\
+\textbf{NetSuite ERP} & \texttt{Invoice} (status, dueDate, amountRemaining, total, \textbf{clmContractRef} chains from CLM contract\_id). \href{https://system.netsuite.com/help/helpcenter/en_US/APIs/REST_API_Browser/record/v1/2023.1/index.html}{\textcolor{blue}{[API Ref]}} \\
 \textbf{Provisioning} & Tenant creation + 14-task onboarding checklist with dependencies, owners, and due dates. \\
 \textbf{Currency (Frankfurter)} & Live and historical exchange rates via ECB data. Converts invoice amounts across currencies (e.g., CAD$\leftrightarrow$USD) using the invoice date rate. \href{https://frankfurter.dev}{\textcolor{blue}{[API Ref]}} \\
 \bottomrule
@@ -82,9 +82,9 @@ The solution implements an \textbf{AI-powered automation agent} that orchestrate
 \subsection{Data Flow}
 {\scriptsize
 \textbf{(1)} Webhook with \texttt{account\_id} + \texttt{correlation\_id}
-\textbf{(2)} Fetch Salesforce account, then user/opportunity/contract/CLM/invoice in parallel
-\textbf{(3)} \texttt{validate\_business\_rules} (5 domains) + \texttt{check\_financial\_alignment} (cross-currency)
-\textbf{(4)} PROCEED $\rightarrow$ provision; BLOCK/ESCALATE $\rightarrow$ notify; generate reports.
+\textbf{(2)} Fetch account, then user/opportunity in parallel; chain sequentially: Opp.ContractId $\rightarrow$ SF Contract $\rightarrow$ CLM (via salesforce\_contract\_id) $\rightarrow$ Invoice (via clmContractRef)
+\textbf{(3)} \texttt{validate\_business\_rules} + \texttt{check\_financial\_alignment}
+\textbf{(4)} PROCEED $\rightarrow$ provision + monitor; BLOCK/ESCALATE $\rightarrow$ notify.
 }
 \end{minipage}
 
@@ -92,7 +92,7 @@ The solution implements an \textbf{AI-powered automation agent} that orchestrate
 \begin{figure}[H]
 \centering
 \includegraphics[width=\textwidth,height=13cm,keepaspectratio]{01_architecture.png}
-\caption{Architecture: triggers, Pydantic AI agent orchestration with 16 tools, FastMCP servers, and external system integrations.}
+\caption{Architecture: triggers, Pydantic AI agent orchestration with 21 tools, cross-system data chaining, FastMCP servers, and external system integrations.}
 \end{figure}
 
 %==============================================================================
@@ -100,7 +100,7 @@ The solution implements an \textbf{AI-powered automation agent} that orchestrate
 %==============================================================================
 \section{AI Agent Application}
 
-The agent leverages \textbf{OpenAI GPT-4o-mini} (configurable via \texttt{OPENAI\_MODEL}) with \textbf{Pydantic AI} for native tool calling. The LLM autonomously decides which of the 16 registered tools to call, in what order, and how many times. Falls back to \textbf{Ollama} local models when no API key is available.
+The agent leverages \textbf{OpenAI GPT-4o-mini} (configurable via \texttt{OPENAI\_MODEL}) with \textbf{Pydantic AI} for native tool calling. The LLM autonomously decides which of the 21 registered tools to call, in what order, and how many times. Falls back to \textbf{Ollama} local models when no API key is available. A second \textbf{CS Assistant Agent} shares all tools with free-form text output for conversational monitoring via a \textbf{Streamlit UI} (Dashboard, Run Onboarding, Chat).
 
 \vspace{0.1em}
 \begin{minipage}[t]{0.56\textwidth}
@@ -123,6 +123,7 @@ Upon decision, the agent performs the following autonomous actions:
 \item Sends Slack notifications to \texttt{\#cs-onboarding-alerts} (blocked) or \texttt{\#cs-onboarding} (success/escalate).
 \item Sends customer-facing welcome emails with tenant ID and login URL.
 \item Generates HTML/Markdown/JSON reports for auditing and traceability.
+\item Post-provisioning: monitors progress, detects risks, sends reminders, escalates stalled onboardings.
 \end{enumerate}
 \end{minipage}
 \hfill
@@ -410,7 +411,7 @@ All integrations are mocked but demonstrate production security patterns:
 
 \begin{minipage}[t]{0.54\textwidth}
 \vspace{0pt}
-{\scriptsize\textit{Note: All 16 agent tools are currently mirrored as FastMCP server definitions in \texttt{app/mcp/} (7 servers: Salesforce, CLM, NetSuite, Currency, Provisioning, Notifications, Validation). These can be extracted to standalone MCP services for multi-agent collaboration.}}
+{\scriptsize\textit{Note: All 21 agent tools are mirrored as FastMCP server definitions in \texttt{app/mcp/} (7 servers: Salesforce, CLM, NetSuite, Currency, Provisioning, Notifications, Validation). These can be extracted to standalone MCP services for multi-agent collaboration.}}
 
 \vspace{0.15em}
 {\scriptsize
@@ -472,7 +473,7 @@ directory in the repository.}}
 
 \vspace{0.3em}
 {\scriptsize
-\textbf{Frontend}: A role-based operations interface (e.g., React, ASP.NET, or Node.js-backed UI) providing real-time visibility into onboarding runs, decisions, and system health. Enables Customer Success and Operations teams to review onboarding outcomes, inspect violations or API errors, manually intervene when required, and track provisioning progress and onboarding task completion.
+\textbf{Frontend}: A \textbf{Streamlit UI} is currently implemented with three pages: Dashboard (all results by decision with health/progress), Run Onboarding (scenario runner), and Chat with Agent (conversational CS assistant). For production, migrate to a role-based interface (React, ASP.NET) with authentication, WebSocket updates, and RBAC.
 
 \vspace{0.25em}
 \textbf{AWS Infrastructure}: The onboarding agent executes as containerized services on ECS/Fargate, enabling horizontal scaling based on inbound webhook volume. LLM inference is handled via \textbf{AWS Bedrock} rather than direct OpenAI calls, allowing multi-model flexibility (Claude, Llama, Titan), private networking with traffic contained within the VPC, IAM-based authentication, and enterprise-grade security and compliance. Bedrock enables cost controls and model switching without application changes.
@@ -510,7 +511,7 @@ directory in the repository.}}
 \textbf{Deterministic Decision Boundaries}: The onboarding agent uses an agentic architecture where the LLM reasons through tools via native tool calling (Pydantic AI \texttt{@agent.tool} decorators). However, deterministic business rules enforced by \texttt{validate\_business\_rules} and \texttt{check\_financial\_alignment} tools define all violations and warnings. The LLM decides the routing (\texttt{PROCEED}, \texttt{ESCALATE}, \texttt{BLOCK}) based on these tool outputs, ensuring predictable, testable, and auditable outcomes.
 
 \vspace{0.15em}
-\textbf{Optimized Data Fetching}: The agent fetches the Salesforce account first (to obtain OwnerId), then calls user, opportunity, contract, CLM, and invoice tools in parallel via native tool calling. For production, a tiered optimization strategy applies: \textbf{(1)} Batch API requests where supported (e.g., Salesforce Composite API); \textbf{(2)} Concurrent fetches for systems that don't support batching; \textbf{(3)} Bounded retry logic with exponential backoff (max 3 retries, 1s/2s/4s delays) for transient failures.
+\textbf{Cross-System Data Chaining}: The agent fetches the Salesforce account first, then user/opportunity in parallel. Subsequent fetches chain sequentially: Opportunity.ContractId $\rightarrow$ SF Contract $\rightarrow$ CLM (via salesforce\_contract\_id) $\rightarrow$ Invoice (via clmContractRef). Fallback to account-based lookups if chain links are missing. For production, a tiered optimization strategy applies: \textbf{(1)} Batch API requests where supported (e.g., Salesforce Composite API); \textbf{(2)} Concurrent fetches for systems that don't support batching; \textbf{(3)} Bounded retry logic with exponential backoff (max 3 retries, 1s/2s/4s delays) for transient failures.
 
 \vspace{0.15em}
 \textbf{Idempotency \& Correlation-Based Execution}: Each onboarding run is keyed by a \texttt{correlation\_id} propagated across webhook ingestion, integrations, logs, reports, and notifications. This enables safe replays, deduplication of duplicate webhook events, and re-entrant execution without risk of duplicate provisioning, notifications, or side effects.
@@ -528,7 +529,7 @@ directory in the repository.}}
 \textbf{LLM Data Governance \& Security}: All data sent to LLMs is field-filtered and sanitized. PII is masked prior to inference, and credentials are never exposed beyond integration boundaries. Trust boundaries are strictly enforced at the API layer.
 
 \vspace{0.15em}
-\textbf{Multi-Agent Interoperability}: All 16 agent tools are mirrored as FastMCP server definitions (7 servers in \texttt{app/mcp/}), separating agent logic from external system access. These can be extracted to standalone MCP services with independent versioning, access control, and audit logging. The A2A protocol provides a standardized layer for agent-to-agent collaboration without exposing internal state across boundaries.
+\textbf{Multi-Agent Interoperability}: All 21 agent tools are mirrored as FastMCP server definitions (7 servers in \texttt{app/mcp/}), separating agent logic from external system access. These can be extracted to standalone MCP services with independent versioning, access control, and audit logging. The A2A protocol provides a standardized layer for agent-to-agent collaboration without exposing internal state across boundaries.
 }
 
 \begin{center}

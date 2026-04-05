@@ -5,13 +5,13 @@ The following enhancements would evolve the onboarding agent from a prototype in
 
 ## Workflow & Notifications
 
-1. **Task Monitor Agent**: Scheduled job that runs hourly to detect overdue tasks and send proactive Slack reminders to CS team.
+1. **~~Task Monitor Agent~~** ✅ **PARTIALLY IMPLEMENTED**: The `identify_onboarding_risks` tool detects overdue tasks, customer inactivity (no login after 3 days), SSO not configured after kickoff, blocked tasks, and stalling onboardings (<30% after 7 days). The `send_task_reminder` tool sends reminders to task owners. The `check_onboarding_progress` tool provides a dashboard view with health status (on_track/at_risk/stalled). The CS assistant agent can be asked to check progress and identify risks conversationally. See `app/integrations/provisioning.py` and `app/agent/onboarding_agent.py`. **Remaining enhancement**: Scheduled cron job for hourly automated checks without CS prompting.
 
-2. **Escalation Hierarchy**: If CS team doesn't act on an ESCALATE notification within a threshold (e.g., 48 hours), automatically notify CS Manager. If still unresolved after another threshold, escalate to CS Director.
+2. **~~Escalation Hierarchy~~** ✅ **PARTIALLY IMPLEMENTED**: The `escalate_stalled_onboarding` tool posts to `#cs-onboarding-escalations` with a progress snapshot (completion %, days since provisioning, overdue/blocked counts). The CS assistant can trigger escalation conversationally. See `app/integrations/provisioning.py`. **Remaining enhancement**: Time-based automatic escalation (Day 2 → CS Manager, Day 4 → CS Director) without manual trigger.
    ```
    Day 0: ESCALATE → Notify CS Team (#cs-onboarding)
-   Day 2: No action → Notify CS Manager (@cs-manager)
-   Day 4: Still unresolved → Notify CS Director (@cs-director)
+   Day 2: No action → Notify CS Manager (@cs-manager)  ← not yet automated
+   Day 4: Still unresolved → Notify CS Director (@cs-director)  ← not yet automated
    ```
 
 3. **Approval Workflow**: For ESCALATE decisions, send Slack message with interactive buttons:
@@ -74,11 +74,7 @@ The following enhancements would evolve the onboarding agent from a prototype in
 
 ## Frontend & Observability
 
-17. **Real-Time Dashboard**: React frontend showing:
-     - Active onboardings with status
-     - Task checklists with progress bars
-     - Overdue alerts and escalation status
-     - One-click actions for CS team
+17. **~~Real-Time Dashboard~~** ✅ **IMPLEMENTED**: A Streamlit UI (`streamlit_app.py`) provides three pages: **Dashboard** — all onboarding results grouped by decision (Proceeded/Blocked/Escalated) with health badges, completion %, overdue/blocked counts, and expandable risk details; **Run Onboarding** — scenario selector with tabbed results and batch run-all mode; **Chat with Agent** — interactive conversational interface with the CS assistant agent for querying status, identifying risks, and taking actions. See `streamlit_app.py` and the `/demo/chat`, `/demo/active-onboardings`, `/demo/progress/{id}`, `/demo/risks/{id}` endpoints. **Remaining enhancement**: Migrate to a production-grade React or ASP.NET frontend with authentication, role-based access, and real-time WebSocket updates.
 
 ---
 

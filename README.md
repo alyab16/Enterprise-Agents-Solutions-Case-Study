@@ -7,9 +7,13 @@ An AI-powered customer onboarding automation agent built with **Pydantic AI + Fa
 This agent automates the customer journey from **Sales → Contract → Invoice → Provisioning**, featuring:
 
 - **Agentic Architecture**: The LLM reasons and decides which tools to call — no hardcoded state machine or graph
-- **Native Tool Calling**: 16 tools registered via `@agent.tool` decorators; the agent orchestrates them autonomously
+- **Native Tool Calling**: 21 tools registered via `@agent.tool` decorators; the agent orchestrates them autonomously
+- **Cross-System Data Chaining**: Sequential Sales → Contract → CLM → Invoice lookups where each system's output feeds the next
+- **Dual-Agent Design**: Onboarding agent (structured output) + CS Assistant agent (free-form chat for monitoring and actions)
+- **Streamlit UI**: Dashboard with onboarding progress, scenario runner, and interactive chat with the CS assistant
 - **MCP-Style Extensibility**: Every tool is mirrored as a FastMCP server definition for future extraction to standalone services
 - **Multi-System Integration**: Salesforce, CLM, NetSuite, currency conversion (live API), and SaaS provisioning
+- **Post-Provisioning Monitoring**: Onboarding progress tracking, risk detection, task reminders, and escalation tools
 - **Live Currency Conversion**: Historical and latest USD/CAD exchange rates via Frankfurter API (ECB data) for financial alignment checks
 - **Financial Alignment Detection**: Automated comparison of opportunity deal values vs invoice totals across currencies (2% threshold)
 - **Configurable Error Simulation**: Auth failures, permission errors, validation errors, rate limits, server errors with adjustable probabilities
@@ -32,17 +36,65 @@ Watch the full solution walkthrough here:
 Unlike a traditional state machine or workflow engine, this agent uses **native LLM tool calling**. The LLM receives a system prompt with business rules and a set of tools, then autonomously reasons through the workflow:
 
 ```
-LLM Agent (Pydantic AI)
-  ├── Fetch Tools (6)      → Salesforce, CLM, NetSuite
-  ├── Validation Tools (2) → Business rules, Financial alignment
-  ├── Currency Tool (1)    → Historical/live exchange rates (Frankfurter API)
-  ├── Provisioning (1)     → SaaS tenant creation
+Onboarding Agent (Pydantic AI — structured output)
+  ├── Fetch Tools (6)        → Salesforce, CLM, NetSuite (with cross-system data chaining)
+  ├── Validation Tools (2)   → Business rules, Financial alignment
+  ├── Currency Tool (1)      → Historical/live exchange rates (Frankfurter API)
+  ├── Provisioning (1)       → SaaS tenant creation
+  ├── CS Monitoring (5)      → Progress tracking, risk detection, reminders, escalation, task updates
   └── Notification Tools (6) → Slack, Email, Welcome
+
+CS Assistant Agent (Pydantic AI — free-form text, shares all 21 tools)
+  └── Interactive chat for CS team to query status, identify risks, and take actions
 ```
 
 The agent decides **what to call, in what order, and how many times** based on tool results. Adding a new capability means registering a new `@agent.tool` — zero changes to orchestration logic.
 
 Each tool is also defined as a **FastMCP server** in `app/mcp/`, ready for extraction to standalone MCP services.
+
+### Cross-System Data Chaining
+
+Data flows sequentially across systems — each system's output provides lookup keys for the next:
+
+```mermaid
+graph LR
+    subgraph Salesforce["Salesforce CRM"]
+        Account["Account<br/><small>Id, Name, Industry,<br/>BillingCountry, OwnerId,<br/>IsDeleted, AnnualRevenue</small>"]
+        User["User<br/><small>Id, Email, IsActive,<br/>Name, Title, Department,<br/>ManagerId</small>"]
+        Opportunity["Opportunity<br/><small>Id, StageName, Amount,<br/>CloseDate, <b>ContractId</b>,<br/>AccountId</small>"]
+        SFContract["Contract<br/><small><b>Id</b>, Status, StartDate,<br/>EndDate, ContractTerm,<br/>AccountId, OwnerId</small>"]
+    end
+
+    subgraph CLM["Contract Lifecycle Management"]
+        CLMContract["CLM Contract<br/><small>contract_id, status,<br/><b>salesforce_contract_id</b>,<br/>signatories, key_terms,<br/>effective_date, expiry_date</small>"]
+    end
+
+    subgraph NetSuite["NetSuite ERP"]
+        Invoice["Invoice<br/><small>tranId, status, total,<br/>amountPaid, amountRemaining,<br/>dueDate, currency,<br/><b>clmContractRef</b>, terms</small>"]
+    end
+
+    Account -->|"OwnerId"| User
+    Account -->|"AccountId<br/>(1:many)"| Opportunity
+    Opportunity ==>|"ContractId"| SFContract
+    SFContract ==>|"Id → salesforce_contract_id"| CLMContract
+    CLMContract ==>|"contract_id → clmContractRef"| Invoice
+
+    Account -.->|"fallback:<br/>AccountId"| SFContract
+    Account -.->|"fallback:<br/>external_id"| CLMContract
+    Account -.->|"fallback:<br/>Account ID map"| Invoice
+
+    style Salesforce fill:#e8f0fe,stroke:#4285f4,stroke-width:2px
+    style CLM fill:#fef7e0,stroke:#f9ab00,stroke-width:2px
+    style NetSuite fill:#e6f4ea,stroke:#34a853,stroke-width:2px
+    style Account fill:#fff,stroke:#4285f4
+    style User fill:#fff,stroke:#4285f4
+    style Opportunity fill:#fff,stroke:#4285f4
+    style SFContract fill:#fff,stroke:#4285f4
+    style CLMContract fill:#fff,stroke:#f9ab00
+    style Invoice fill:#fff,stroke:#34a853
+```
+
+**Bold arrows** show the primary chain: `Opportunity.ContractId` → `SF Contract.Id` → `CLM.salesforce_contract_id` → `Invoice.clmContractRef`. **Dotted arrows** show fallback account-based lookups used when a chaining field is missing.
 
 ### Architecture Diagram
 
@@ -75,14 +127,18 @@ flowchart LR
     direction LR
         F_USER["fetch_salesforce\n_user\n(account owner)"]
         F_OPP["fetch_salesforce\n_opportunity\n(deal details)"]
-        F_CON["fetch_salesforce\n_contract\n(SF contract)"]
-        F_CLM["fetch_clm\n_contract\n(CLM system)"]
-        F_INV["fetch_netsuite\n_invoice\n(billing data)"]
+  end
+ subgraph CHAIN["Sequential chain: Sales → Contract → CLM → Invoice"]
+    direction LR
+        F_CON["fetch_salesforce\n_contract\n(via ContractId)"]
+        F_CLM["fetch_clm\n_contract\n(via sf_contract_id)"]
+        F_INV["fetch_netsuite\n_invoice\n(via clmContractRef)"]
   end
  subgraph FETCH["Step 1 · GATHER DATA — fetch from source systems"]
     direction TB
         F_ACC["fetch_salesforce_account\n(primary record)"]
         PARALLEL
+        CHAIN
   end
  subgraph VALIDATE["Step 2 · VALIDATE — business rules + financial checks"]
     direction TB
@@ -105,7 +161,7 @@ flowchart LR
         N_EMAIL["send_email\n(CS team summary)"]
         N_WEL["send_customer_welcome\n(welcome email)"]
   end
- subgraph AGENT["2 · PYDANTIC AI AGENT — 16 tools via @agent.tool"]
+ subgraph AGENT["2 · PYDANTIC AI AGENT — 21 tools via @agent.tool"]
         ENTRY["Initialize OnboardingDeps\n(account_id, correlation_id)"]
         FETCH
         VALIDATE
@@ -148,7 +204,10 @@ flowchart LR
     TRIGGERS -- account_id + correlation_id --> ENTRY
     ENTRY --> F_ACC
     F_ACC -- OwnerId --> F_USER
-    F_ACC --> F_OPP & F_CON & F_CLM & F_INV
+    F_ACC --> F_OPP
+    F_OPP -- ContractId --> F_CON
+    F_CON -- sf_contract_id --> F_CLM
+    F_CLM -- clmContractRef --> F_INV
     FETCH --> V_BIZ
     V_BIZ --> V_FIN
     V_FIN -. if currencies differ .-> V_CUR
@@ -599,11 +658,66 @@ When an account is provisioned, the agent automatically creates a **granular onb
 14. ⏳ Onboarding Complete (cs_team - pending, due in 45 days)
 ```
 
+## 💬 CS Assistant & Streamlit UI
+
+The project includes a **dual-agent architecture** and a **Streamlit UI** for interactive use:
+
+### CS Assistant Agent
+
+A second agent (`cs_assistant_agent`) shares all 21 tools but returns free-form text instead of structured output. It enables CS managers to interact conversationally:
+
+- "What's the onboarding progress for ACME-001?"
+- "Are there any risks with this account?"
+- "Send a reminder about the login task"
+- "Escalate this onboarding — customer is unresponsive"
+
+The assistant retains conversation history across messages within a session.
+
+### Streamlit UI (3 pages)
+
+Start the UI alongside the FastAPI backend:
+
+```bash
+# Terminal 1: API backend
+uv run python main.py
+
+# Terminal 2: Streamlit UI
+uv run streamlit run streamlit_app.py
+```
+
+| Page | Description |
+|------|-------------|
+| **Dashboard** | All onboarding results grouped by decision (Proceeded/Blocked/Escalated) with health badges, completion %, overdue/blocked task counts, and expandable risk details |
+| **Run Onboarding** | Scenario selector, run button, tabbed results (violations/warnings/actions/provisioning), and run-all-scenarios batch mode |
+| **Chat with Agent** | Interactive chat with the CS assistant, sidebar quick actions (Check Progress, Identify Risks), and per-account context |
+
+### CS Monitoring Tools (5 new tools)
+
+| Tool | Description |
+|------|-------------|
+| `check_onboarding_progress` | Completion %, task breakdown, health status (on_track/at_risk/stalled) |
+| `identify_onboarding_risks` | Detects: no login after 3 days, SSO not configured, tasks blocked, stalling, overdue actions |
+| `send_task_reminder` | Sends reminder to task owner (customer or CS team) |
+| `escalate_stalled_onboarding` | Posts to #cs-onboarding-escalations with progress snapshot |
+| `update_onboarding_task` | Update task status (pending/in_progress/completed/blocked/skipped) |
+
+### CS Monitoring Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/demo/progress/{account_id}` | Onboarding progress dashboard |
+| GET | `/demo/risks/{account_id}` | Risk detection for active onboarding |
+| POST | `/demo/remind/{account_id}/{task_id}` | Send task reminder |
+| POST | `/demo/escalate/{account_id}` | Escalate stalled onboarding |
+| GET | `/demo/active-onboardings` | All onboarding results with progress |
+| POST | `/demo/chat` | Chat with CS assistant agent |
+
 ## 📁 Project Structure
 
 ```
 Enterprise-Agents-Solutions-Case-Study/
 ├── main.py                               # FastAPI application + tracing setup
+├── streamlit_app.py                      # Streamlit UI (Dashboard, Run, Chat)
 │
 ├── solution_design/                      # Architecture & technical design assets
 │   ├── Solution_Design_Document.pdf
@@ -613,9 +727,9 @@ Enterprise-Agents-Solutions-Case-Study/
 ├── logs/                                 # Runtime logs
 │
 └── app/
-    ├── agent/                            # Pydantic AI agent
+    ├── agent/                            # Pydantic AI agents
     │   ├── __init__.py                   # run_onboarding_async() entry point
-    │   ├── onboarding_agent.py           # Agent + 16 tools (system prompt, tool defs)
+    │   ├── onboarding_agent.py           # Onboarding agent (21 tools) + CS assistant agent
     │   ├── dependencies.py               # OnboardingDeps (runtime context)
     │   ├── models.py                     # OnboardingResult (structured output)
     │   ├── state_utils.py                # State manipulation utilities
@@ -626,20 +740,20 @@ Enterprise-Agents-Solutions-Case-Study/
     │   ├── clm_server.py                 # CLM tools as MCP
     │   ├── netsuite_server.py            # NetSuite tools as MCP
     │   ├── currency_server.py            # Currency conversion as MCP
-    │   ├── provisioning_server.py        # Provisioning tools as MCP
+    │   ├── provisioning_server.py        # Provisioning + monitoring tools as MCP
     │   ├── notifications_server.py       # Notification tools as MCP
     │   └── validation_server.py          # Validation tools as MCP
     │
     ├── api/                              # REST endpoints
-    │   ├── demo.py                       # Demo endpoints (7 scenarios + error simulation)
+    │   ├── demo.py                       # Demo, monitoring, chat endpoints
     │   └── webhook.py                    # Webhook handlers
     │
     ├── integrations/                     # Mock API clients
     │   ├── salesforce.py                 # Salesforce CRM (accounts, opps, contracts)
-    │   ├── clm.py                        # Contract Lifecycle Management
-    │   ├── netsuite.py                   # NetSuite ERP (invoices)
+    │   ├── clm.py                        # CLM (with salesforce_contract_id cross-ref)
+    │   ├── netsuite.py                   # NetSuite ERP (with clmContractRef cross-ref)
     │   ├── currency.py                   # Currency conversion with historical rates (Frankfurter API)
-    │   ├── provisioning.py               # SaaS tenant provisioning
+    │   ├── provisioning.py               # Provisioning + monitoring/risk/escalation
     │   └── api_errors.py                 # Error hierarchy + simulator
     │
     ├── tracing.py                        # Dual tracing setup (Logfire + LangSmith)
@@ -684,12 +798,11 @@ The following features would enhance the agent for production use:
 
 | Limitation | Current State | Production Enhancement |
 |------------|---------------|----------------------|
-| **Task monitoring is passive** | Must call `/tasks/{id}/overdue` endpoint manually | Add scheduled job to check hourly and send automatic Slack reminders |
 | **No human-in-the-loop approval** | ESCALATE notifies but doesn't wait for approval | Add Slack interactive buttons for approve/reject before provisioning |
-| **No escalation hierarchy** | Notifications go to CS team only | If no action taken within X days, escalate to CS Manager/Director |
 | **Event-driven task completion** | Tasks must be manually marked complete via API | Integrate webhooks from SaaS platform to auto-complete when customer takes action |
 | **No customer-facing portal** | Customer can't see their onboarding progress | Build React dashboard showing task checklist and status |
 | **Single workflow execution** | Agent runs once per trigger | Add retry/resume capability for failed workflows |
+| **In-memory state** | Provisioning/chat history lost on restart | Add persistent database (PostgreSQL) for production |
 
 ### Proactive vs Passive Features
 
@@ -700,10 +813,11 @@ The following features would enhance the agent for production use:
 | Underpayment detection | ✅ Proactive | Financial alignment check flags gaps > 2% threshold |
 | Contract pending signatures | ✅ Proactive | Warning generated, CS notified via Slack |
 | Risk analysis recommendations | ✅ Proactive | LLM suggests actions before problems escalate |
-| Task overdue detection | ⚠️ Passive | Endpoint exists but requires manual polling |
-| Task due date reminders | ❌ Not implemented | Would need scheduled job |
-| Customer action tracking | ❌ Not implemented | Would need SaaS platform webhooks |
-| Escalation to management | ❌ Not implemented | Would need threshold-based escalation rules |
+| Task overdue detection | ✅ Proactive | CS assistant detects overdue tasks via `identify_onboarding_risks` |
+| Task due date reminders | ✅ Proactive | `send_task_reminder` tool sends reminders to task owners |
+| Customer action tracking | ⚠️ Passive | Agent can check progress but no auto-detection via webhooks |
+| Escalation to management | ✅ Proactive | `escalate_stalled_onboarding` posts to #cs-onboarding-escalations |
+| Interactive CS dashboard | ✅ Implemented | Streamlit UI with Dashboard, Run Onboarding, and Chat pages |
 
 ### Suggested Enhancements
 
@@ -711,11 +825,11 @@ For detailed production enhancements (23 items with implementation ideas, Salesf
 
 | Category | Enhancements | Focus |
 |----------|:---:|-------|
-| **Workflow & Notifications** | 3 | Task monitoring, escalation hierarchy, approval workflows |
+| **Workflow & Notifications** | 3 | Task monitoring (partially implemented), escalation hierarchy (partially implemented), approval workflows |
 | **Event-Driven Integration** | 2 | Webhook-based task completion, optimized batch fetching |
 | **Salesforce & CRM Scenarios** | 5 | Account hierarchies, multi-opportunity handling, owner validation, stale deal detection |
 | **Invoice & Financial Scenarios** | 4 | Installments, credit memos, payment discounts, cross-system reconciliation (multi-currency with historical rates and underpayment detection now implemented) |
-| **Frontend & Observability** | 1 | Real-time CS dashboard |
+| **Frontend & Observability** | 1 | ~~Real-time CS dashboard~~ implemented via Streamlit UI |
 | **LLM Resilience & Multi-Model Fallback** | 2 | Secondary LLM providers, unified gateway via LiteLLM |
 | **RAG & Context Engineering** | 2 | Vector-based retrieval for risk analysis, historical predictive scoring |
 | **Multi-Agent Architecture** | 2 | MCP server integration with A2A protocol for agent-to-agent collaboration, and credential management and trust boundaries |
