@@ -1,5 +1,5 @@
 \documentclass[8pt,a4paper]{article}
-\usepackage[margin=0.45in,top=0.35in,bottom=0.35in]{geometry}
+\usepackage[margin=0.4in,top=0.3in,bottom=0.3in]{geometry}
 \usepackage{titlesec}
 \usepackage{enumitem}
 \usepackage{hyperref}
@@ -12,11 +12,12 @@
 \usepackage{multicol}
 \usepackage{ragged2e}
 % Tight spacing
-\setlength{\parskip}{0.08em}
+\setlength{\parskip}{0.05em}
 \setlength{\parindent}{0pt}
-\titlespacing*{\section}{0pt}{0.25em}{0.08em}
-\titlespacing*{\subsection}{0pt}{0.15em}{0.05em}
+\titlespacing*{\section}{0pt}{0.2em}{0.05em}
+\titlespacing*{\subsection}{0pt}{0.12em}{0.03em}
 \setlist[itemize]{noitemsep, topsep=0pt, leftmargin=1em, parsep=0pt}
+\setlist[enumerate]{noitemsep, topsep=0pt, leftmargin=1.5em, parsep=0pt}
 
 % Colors
 \definecolor{primary}{RGB}{44, 82, 130}
@@ -42,7 +43,7 @@
 
 % Title
 \begin{center}
-{\large\bfseries\color{primary} Enterprise Customer Onboarding Agent --- Solution Design Document}\\[0.05em]
+{\large\bfseries\color{primary} Enterprise Customer Onboarding Agent --- Solution Design Document}\\[0.03em]
 {\small April 2026}
 \end{center}
 
@@ -51,11 +52,11 @@
 %==============================================================================
 \section{Architecture Overview}
 
-The solution implements an \textbf{AI-powered automation agent} that orchestrates enterprise customer onboarding from deal closure through SaaS provisioning. Built with \textbf{Pydantic AI} for agentic tool calling and \textbf{FastAPI} for the REST interface, the agent uses native LLM tool calling to autonomously reason through 21 registered tools. Each tool is mirrored as a \textbf{FastMCP} server definition for MCP-style extraction. A second \textbf{CS Assistant Agent} shares all tools but returns free-form text for conversational interaction via a \textbf{Streamlit UI}. Data flows sequentially across systems via \textbf{cross-system chaining}: Opportunity.ContractId $\rightarrow$ SF Contract.Id $\rightarrow$ CLM.salesforce\_contract\_id $\rightarrow$ Invoice.clmContractRef, with fallback to account-based lookups when chain links are missing.
+The solution implements an \textbf{AI-powered automation agent} that orchestrates enterprise customer onboarding from deal closure through SaaS provisioning. Built with \textbf{Pydantic AI} for agentic tool calling and \textbf{FastAPI} for the REST interface, the agent uses native LLM tool calling to autonomously reason through 24 registered tools. Each tool is mirrored as a \textbf{FastMCP} server definition for MCP-style extraction. A second \textbf{CS Assistant Agent} shares all tools but returns free-form text for conversational interaction via a \textbf{Streamlit UI} with four pages (Dashboard, Portfolio Overview, Run Onboarding, Chat). Data flows sequentially across systems via \textbf{cross-system chaining}: Opportunity.ContractId $\rightarrow$ SF Contract.Id $\rightarrow$ CLM.salesforce\_contract\_id $\rightarrow$ Invoice.clmContractRef, with fallback to account-based lookups when chain links are missing.
 
-\vspace{0.15em}
-\subsection{System Integrations}
 \vspace{0.1em}
+\subsection{System Integrations}
+\vspace{0.05em}
 \begin{table}[H]
 \scriptsize
 \begin{tabularx}{\textwidth}{@{}lX@{}}
@@ -71,7 +72,7 @@ The solution implements an \textbf{AI-powered automation agent} that orchestrate
 \end{tabularx}
 \end{table}
 
-\vspace{-0.3em}
+\vspace{-0.4em}
 \begin{minipage}[t]{0.48\textwidth}
 \vspace{0pt}
 {\scriptsize\textbf{Field Selection Rationale:} \texttt{Account.IsDeleted} validates account exists; \texttt{Opportunity.StageName="Closed Won"} confirms deal closure; \texttt{Invoice.status} identifies payment blockers; \texttt{CLM.status} in \{EXECUTED, SIGNED\} required for provisioning. Currency conversion uses historical rates from the invoice date for financial accuracy. Minimizes API calls while capturing decision-critical data.}
@@ -88,11 +89,11 @@ The solution implements an \textbf{AI-powered automation agent} that orchestrate
 }
 \end{minipage}
 
-\vspace{0.3em}
+\vspace{0.2em}
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth,height=13cm,keepaspectratio]{01_architecture.png}
-\caption{Architecture: triggers, Pydantic AI agent orchestration with 21 tools, cross-system data chaining, FastMCP servers, and external system integrations.}
+\includegraphics[width=\textwidth,height=14.5cm,keepaspectratio]{01_architecture.png}
+\caption{Architecture: triggers, Pydantic AI agent orchestration with 24 tools, cross-system data chaining, FastMCP servers, and external system integrations.}
 \end{figure}
 
 %==============================================================================
@@ -100,9 +101,9 @@ The solution implements an \textbf{AI-powered automation agent} that orchestrate
 %==============================================================================
 \section{AI Agent Application}
 
-The agent leverages \textbf{OpenAI GPT-4o-mini} (configurable via \texttt{OPENAI\_MODEL}) with \textbf{Pydantic AI} for native tool calling. The LLM autonomously decides which of the 21 registered tools to call, in what order, and how many times. Falls back to \textbf{Ollama} local models when no API key is available. A second \textbf{CS Assistant Agent} shares all tools with free-form text output for conversational monitoring via a \textbf{Streamlit UI} (Dashboard, Run Onboarding, Chat).
+The agent leverages \textbf{OpenAI GPT-4o-mini} (configurable via \texttt{OPENAI\_MODEL}) with \textbf{Pydantic AI} for native tool calling. The LLM autonomously decides which of the 24 registered tools to call, in what order, and how many times. Falls back to \textbf{Ollama} local models when no API key is available. A second \textbf{CS Assistant Agent} shares all tools with free-form text output for conversational monitoring via the Streamlit UI.
 
-\vspace{0.1em}
+\vspace{0.05em}
 \begin{minipage}[t]{0.56\textwidth}
 \vspace{0pt}
 \subsection{LLM-Powered Intelligence}
@@ -110,20 +111,20 @@ The agent leverages \textbf{OpenAI GPT-4o-mini} (configurable via \texttt{OPENAI
 \item \textbf{Risk Analysis}: Evaluates API errors, violations, warnings $\rightarrow$ risk levels (low/medium/high/critical) with business impact and resolution time estimates.
 \item \textbf{Summary Generation}: Human-readable reports for CS teams, translating technical states to actionable insights.
 \item \textbf{Action Recommendations}: Prioritized steps with owner assignment (CS, Finance, IT/DevOps, Legal, Sales Ops).
-\item \textbf{Error Interpretation}: Converts technical codes (e.g., \texttt{INVALID\_SESSION\_ID}) to plain English with resolution steps and responsible teams.
+\item \textbf{Error Interpretation}: Converts technical codes (e.g., \texttt{INVALID\_SESSION\_ID}) to plain English with resolution steps.
 \end{itemize}
 
-\vspace{8pt}
+\vspace{4pt}
 
 \subsection{Autonomous Actions}
-Upon decision, the agent performs the following autonomous actions:
-\begin{enumerate}[label=\textbf{(\arabic*)}, itemsep=0pt, topsep=6pt]
+\begin{enumerate}[label=\textbf{(\arabic*)}, itemsep=0pt, topsep=3pt]
 \item Auto-provisions the SaaS tenant with tier-appropriate configuration (Enterprise/Growth/Starter).
 \item Creates a 14-task onboarding checklist with dependencies, ownership (system/cs\_team/customer), and due dates.
 \item Sends Slack notifications to \texttt{\#cs-onboarding-alerts} (blocked) or \texttt{\#cs-onboarding} (success/escalate).
 \item Sends customer-facing welcome emails with tenant ID and login URL.
 \item Generates HTML/Markdown/JSON reports for auditing and traceability.
 \item Post-provisioning: monitors progress, detects risks, sends reminders, escalates stalled onboardings.
+\item Portfolio management: aggregated alerts across accounts, suggested actions with approve/dismiss, batch reminders.
 \end{enumerate}
 \end{minipage}
 \hfill
@@ -131,7 +132,7 @@ Upon decision, the agent performs the following autonomous actions:
 \vspace{0pt}
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth,height=10cm,keepaspectratio]{02_decision.png}
+\includegraphics[width=\textwidth,height=11cm,keepaspectratio]{02_decision.png}
 \caption{Decision: API Errors/Violations $\rightarrow$ BLOCK, Warnings $\rightarrow$ ESCALATE, Clear $\rightarrow$ PROCEED.}
 \end{figure}
 \end{minipage}
@@ -139,14 +140,14 @@ Upon decision, the agent performs the following autonomous actions:
 %-------------------------------
 % Onboarding Task Management
 %-------------------------------
-\vspace{0.5em}
+\vspace{0.3em}
 \subsection{Onboarding Task Management}
 
-\vspace{0.25em}
-{\scriptsize
-The provisioning system creates a 14-task onboarding checklist with the following structure:
-
 \vspace{0.15em}
+{\scriptsize
+The provisioning system creates a 14-task onboarding checklist:
+
+\vspace{0.1em}
 \begin{minipage}[t]{0.48\textwidth}
 \textbf{Task Categories:}
 \begin{itemize}[leftmargin=1.2em]
@@ -168,20 +169,20 @@ The provisioning system creates a 14-task onboarding checklist with the followin
 \end{itemize}
 \end{minipage}
 
-\vspace{0.15em}
+\vspace{0.1em}
 Tasks include dependencies (e.g., ``Complete Tour'' depends on ``Verify Login''), due dates calculated relative to provisioning, and ownership assignment enabling filtered views per team.
 }
 
 %==============================================================================
 % SECTION B.5: BUSINESS RULE VALIDATION
 %==============================================================================
-\vspace{0.4em}
+\vspace{0.25em}
 \subsection{Business Rule Validation (Invariants)}
 {\scriptsize
 The agent enforces a two-tier validation system across five domains. \textbf{Violations} are blocking (cause BLOCK decision); \textbf{Warnings} are non-blocking (cause ESCALATE for human review).
 }
 
-\vspace{0.15em}
+\vspace{0.1em}
 \begin{table}[H]
 \scriptsize
 \begin{tabularx}{\textwidth}{@{}llX@{}}
@@ -222,7 +223,7 @@ Batch & Scheduler & \texttt{POST /demo/run-all} \\
 \vspace{0pt}
 {\scriptsize\textbf{Error Simulation}: \texttt{/demo/enable-random-errors} injects failures (401 auth, 400 validation, 429 rate limit, 500 server) at configurable rates for chaos testing without modifying business logic.}
 
-\vspace{0.3em}
+\vspace{0.2em}
 {\scriptsize\textbf{Report Generation}: Each run produces three output files:
 \begin{itemize}[leftmargin=1.2em]
 \item \texttt{run\_report\_*.md} -- Full Markdown report with all details
@@ -232,13 +233,13 @@ Batch & Scheduler & \texttt{POST /demo/run-all} \\
 }
 \end{minipage}
 
-\vspace{0.3em}
+\vspace{0.2em}
 \begin{minipage}[t]{0.54\textwidth}
 \vspace{0pt}
 \begin{figure}[H]
     \centering
-    \includegraphics[width=\textwidth,height=9cm,keepaspectratio]{04_state_machine.png}
-    \caption{Agent workflow: full lifecycle from webhook ingestion through tool calling, validation, and decision routing to completion.}
+    \includegraphics[width=\textwidth,height=10cm,keepaspectratio]{04_state_machine.png}
+    \caption{Agent workflow: full lifecycle from webhook ingestion through tool calling, validation, decision routing, post-provisioning monitoring, and portfolio management.}
 \end{figure}
 \end{minipage}
 \hfill
@@ -252,7 +253,7 @@ Batch & Scheduler & \texttt{POST /demo/run-all} \\
 Each integration returns structured error payloads with \texttt{error\_type}, \texttt{error\_code}, \texttt{http\_status}, \texttt{message}, \texttt{resolution}, and \texttt{owner}:
 }
 
-\vspace{0.1em}
+\vspace{0.05em}
 \begin{table}[H]
 \scriptsize
 \begin{tabularx}{\textwidth}{@{}llX@{}}
@@ -268,7 +269,7 @@ Server Error & 500 & Check status page, retry later (Support Team) \\
 \end{tabularx}
 \end{table}
 
-\vspace{0.3em}
+\vspace{0.15em}
 {\scriptsize
 \textbf{Error Handling Features:}
 \begin{itemize}[leftmargin=1.2em]
@@ -308,19 +309,19 @@ LLM Advisory Only & Auditable but less adaptive \\
 \begin{minipage}[t]{0.32\textwidth}
 \subsection{Assumptions}
 {\scriptsize
-\vspace{10pt}
+\vspace{6pt}
 \begin{itemize}
 \item Salesforce is source of truth for accounts
 \item CLM status reflects actual signatures
 \item Invoice payment status is current
-\item Invoices may be in different currencies (e.g., CAD, USD); cross-currency comparison uses historical ECB rates from the invoice date with a 2\% alignment threshold
+\item Cross-currency comparison uses historical ECB rates from invoice date with 2\% threshold
 \item One invoice per account per onboarding run
-\item One Opportunity per Account for onboarding (no multi-deal scenarios)
-\item Contract has a single version with no amendments
+\item One Opportunity per Account (no multi-deal)
+\item Contract has a single version, no amendments
 \item CS monitors Slack channels for alerts
 \item Single onboarding per account at a time
 \item Customer email available in CLM signatories
-\item Account ID is consistent across all systems
+\item Account ID consistent across all systems
 \end{itemize}
 }
 \end{minipage}
@@ -329,13 +330,13 @@ LLM Advisory Only & Auditable but less adaptive \\
 {\scriptsize
 \subsection{Limitations}
 {\scriptsize
-\vspace{10pt}
+\vspace{6pt}
 \begin{itemize}
-\item \textbf{Mock integrations}: Salesforce, NetSuite, and CLM use simulated data; not connected to real APIs
+\item \textbf{Mock integrations}: Salesforce, NetSuite, CLM use simulated data; not connected to real APIs
 \item \textbf{In-memory state}: Provisioning and task data lost on restart; no persistent database
-\item \textbf{Single instance}: No horizontal scaling or load balancing for high-volume webhooks
-\item \textbf{No approval UI}: ESCALATE decisions notify Slack but lack a UI for human approve/reject workflow
-\item \textbf{No webhook auth}: Inbound webhooks not verified via HMAC signature or shared secret
+\item \textbf{Single instance}: No horizontal scaling or load balancing
+\item \textbf{Limited approval UI}: Suggested Actions panel provides approve/dismiss; full Slack interactive approval not yet implemented
+\item \textbf{No webhook auth}: Inbound webhooks not verified via HMAC or shared secret
 \end{itemize}
 }
 }
@@ -344,13 +345,13 @@ LLM Advisory Only & Auditable but less adaptive \\
 %==============================================================================
 % SECTION D.5: DEMO SCENARIOS
 %==============================================================================
-\vspace{0.3em}
+\vspace{0.15em}
 \subsection{Testing \& Demonstration}
 {\scriptsize
-The system includes 7 pre-configured demo scenarios validating all decision paths, including cross-currency financial alignment:
+The system includes 10 pre-configured demo scenarios validating all decision paths. Three PROCEED scenarios include post-provisioning simulation to demonstrate proactive risk detection:
 }
 
-\vspace{0.1em}
+\vspace{0.05em}
 \begin{table}[H]
 \scriptsize
 \begin{tabularx}{\textwidth}{@{}llXl@{}}
@@ -362,8 +363,11 @@ The system includes 7 pre-configured demo scenarios validating all decision path
 \texttt{GAMMA-003} & Overdue Invoice & Invoice 25+ days overdue, needs finance review & ESCALATE \\
 \texttt{DELETED-004} & Deleted Account & Account marked \texttt{IsDeleted=true} & BLOCK \\
 \texttt{MISSING-999} & Account Not Found & Account does not exist in any system & BLOCK \\
-\texttt{FOREX-005} & FX Invoice Mismatch & CAD \$145k invoice vs USD \$100k opportunity; historical rate conversion reveals gap $>$2\% & ESCALATE \\
+\texttt{FOREX-005} & FX Invoice Mismatch & CAD \$145k invoice vs USD \$100k opportunity; historical rate gap $>$2\% & ESCALATE \\
 \texttt{PARTIAL-006} & Partial Payment Gap & \$190k paid of \$200k invoice (5\% underpayment exceeds 2\% threshold) & ESCALATE \\
+\texttt{STARTER-007} & Customer Not Logged In & All checks pass; post-provisioning: customer hasn't logged in after 5 days & PROCEED \\
+\texttt{GROWTH-008} & Stalled Onboarding & All checks pass; post-provisioning: $<$30\% complete after 10 days, kickoff not done & PROCEED \\
+\texttt{ENTERPRISE-009} & SSO \& Blocked Tasks & All checks pass; post-provisioning: SSO blocked, multiple tasks overdue after 8 days & PROCEED \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -371,18 +375,16 @@ The system includes 7 pre-configured demo scenarios validating all decision path
 %==============================================================================
 % SECTION D.6: OBSERVABILITY & SECURITY
 %==============================================================================
-\vspace{0.2em}
+\vspace{-0.1em}
 \begin{minipage}[t]{0.48\textwidth}
 \vspace{0pt}
 \subsection{Observability \& Tracing}
 {\scriptsize
 The agent supports \textbf{dual opt-in tracing} --- both can run simultaneously:
-
-\vspace{0.15em}
 \begin{itemize}[leftmargin=1.2em]
-\item \textbf{Pydantic Logfire}: Native Pydantic AI agent tracing --- full reasoning chains, tool calls with inputs/outputs, structured output validation. Dashboard at \texttt{logfire.pydantic.dev}.
+\item \textbf{Pydantic Logfire}: Native agent tracing --- reasoning chains, tool calls with inputs/outputs, structured output validation.
 \item \textbf{LangSmith}: Agent execution runs, tool invocations, LLM completions via OpenTelemetry bridge (\texttt{OtelSpanProcessor}). Logfire owns the TracerProvider; LangSmith attaches as a span processor.
-\item \textbf{Structured JSON Logging}: All events logged with \texttt{correlation\_id}, timestamps, and context. Logs written to \texttt{logs/} directory for audit trails.
+\item \textbf{Structured JSON Logging}: All events logged with \texttt{correlation\_id}, timestamps, and context.
 \end{itemize}
 }
 \end{minipage}
@@ -392,14 +394,12 @@ The agent supports \textbf{dual opt-in tracing} --- both can run simultaneously:
 \subsection{Security Patterns}
 {\scriptsize
 All integrations are mocked but demonstrate production security patterns:
-
-\vspace{0.15em}
 \begin{itemize}[leftmargin=1.2em]
 \item \textbf{OAuth Simulation}: Token expiry and refresh flows with distinct error types for expired vs invalid tokens
 \item \textbf{Permission Checking}: Role-based access control verified before every API call
 \item \textbf{Credential Validation}: Structured error hierarchy (\texttt{AuthenticationError}, \texttt{AuthorizationError}, \texttt{ValidationError}, \texttt{RateLimitError})
 \item \textbf{Audit Logging}: Correlation IDs propagated end-to-end for traceability across all systems
-\item \textbf{Error Masking}: No sensitive data (tokens, secrets) exposed in API responses or generated reports
+\item \textbf{Error Masking}: No sensitive data (tokens, secrets) exposed in API responses or reports
 \end{itemize}
 }
 \end{minipage}
@@ -411,14 +411,14 @@ All integrations are mocked but demonstrate production security patterns:
 
 \begin{minipage}[t]{0.54\textwidth}
 \vspace{0pt}
-{\scriptsize\textit{Note: All 21 agent tools are mirrored as FastMCP server definitions in \texttt{app/mcp/} (7 servers: Salesforce, CLM, NetSuite, Currency, Provisioning, Notifications, Validation). These can be extracted to standalone MCP services for multi-agent collaboration.}}
+{\scriptsize\textit{Note: All 24 agent tools are mirrored as FastMCP server definitions in \texttt{app/mcp/} (7 servers: Salesforce, CLM, NetSuite, Currency, Provisioning, Notifications, Validation). These can be extracted to standalone MCP services for multi-agent collaboration.}}
 
-\vspace{0.15em}
+\vspace{0.1em}
 {\scriptsize
-The architecture supports multi-agent collaboration through the \textbf{Model Context Protocol (MCP)}, enabling specialized agents to interact through standardized, governed tool interfaces rather than direct API access. Each integration is wrapped as a FastMCP server, cleanly separating decision logic from execution concerns while allowing agents to remain focused on their respective domains.
+The architecture supports multi-agent collaboration through the \textbf{Model Context Protocol (MCP)}, enabling specialized agents to interact through standardized, governed tool interfaces rather than direct API access. Each integration is wrapped as a FastMCP server, cleanly separating decision logic from execution concerns.
 }
 
-\vspace{0.15em}
+\vspace{0.1em}
 \begin{table}[H]
 \scriptsize
 \begin{tabularx}{\textwidth}{@{}lX@{}}
@@ -436,11 +436,9 @@ Task Monitor & Detects overdue onboarding tasks (\texttt{tasks.get\_overdue}) \\
 \vspace{-15pt}
 {\scriptsize\textbf{Benefits}: Independent versioning per integration $\bullet$ Clear domain ownership $\bullet$ Centralized access control and audit logging $\bullet$ Scalable agent complexity $\bullet$ Cross-agent context sharing.}
 
-\vspace{0.35em}
+\vspace{0.25em}
 {\scriptsize
-\textbf{Concurrency \& API Execution Strategy}: MCP servers would act as controlled execution layers for external APIs, enabling concurrent and batch-aware request handling. Where supported, batch or composite API calls are leveraged to reduce network overhead and latency (e.g., Salesforce composite reads). If batch execution fails or yields partial results, the system safely falls back to bounded parallel single-entity requests.
-
-Concurrency limits, rate limiting, and circuit breakers would be enforced at the MCP layer to prevent downstream system overload and cascading failures. This approach improves onboarding throughput while preserving idempotency, error isolation, and predictable failure handling across agents.
+\textbf{Concurrency \& API Execution Strategy}: MCP servers act as controlled execution layers for external APIs, enabling concurrent and batch-aware request handling. Batch or composite API calls are leveraged where supported (e.g., Salesforce composite reads), with fallback to bounded parallel single-entity requests. Concurrency limits, rate limiting, and circuit breakers are enforced at the MCP layer to prevent downstream overload and cascading failures.
 }
 \end{minipage}
 \hfill
@@ -448,12 +446,12 @@ Concurrency limits, rate limiting, and circuit breakers would be enforced at the
 \vspace{0pt}
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth,height=12cm,keepaspectratio]{03_mcp_architecture.png}
+\includegraphics[width=\textwidth,height=13cm,keepaspectratio]{03_mcp_architecture.png}
 \caption{MCP: Specialized agents collaborate through shared execution servers wrapping external APIs.}
 \end{figure}
 \end{minipage}
 
-\enlargethispage{1.5\baselineskip}
+\enlargethispage{2\baselineskip}
 \vspace{3pt}
 %==============================================================================
 % SECTION F: PRODUCTION Considerations
@@ -471,15 +469,15 @@ directory in the repository.}}
 
 {\small\bfseries\color{primary} Cloud Deployment}
 
-\vspace{0.3em}
+\vspace{0.2em}
 {\scriptsize
-\textbf{Frontend}: A \textbf{Streamlit UI} is currently implemented with three pages: Dashboard (all results by decision with health/progress), Run Onboarding (scenario runner), and Chat with Agent (conversational CS assistant). For production, migrate to a role-based interface (React, ASP.NET) with authentication, WebSocket updates, and RBAC.
+\textbf{Frontend}: A Streamlit UI is implemented with four pages: Dashboard (proactive alerts, suggested actions with approve/dismiss, results by decision), Portfolio Overview (health distribution, priority actions, sortable account table), Run Onboarding (scenario runner with live provisioning progress), and Chat (portfolio-level commands, account dropdown, batch actions). For production, migrate to a role-based interface (React, ASP.NET) with auth and WebSocket updates.
 
-\vspace{0.25em}
-\textbf{AWS Infrastructure}: The onboarding agent executes as containerized services on ECS/Fargate, enabling horizontal scaling based on inbound webhook volume. LLM inference is handled via \textbf{AWS Bedrock} rather than direct OpenAI calls, allowing multi-model flexibility (Claude, Llama, Titan), private networking with traffic contained within the VPC, IAM-based authentication, and enterprise-grade security and compliance. Bedrock enables cost controls and model switching without application changes.
+\vspace{0.15em}
+\textbf{AWS Infrastructure}: Containerized services on ECS/Fargate with horizontal scaling. LLM inference via \textbf{AWS Bedrock} for multi-model flexibility (Claude, Llama, Titan), private VPC networking, and IAM-based auth. Bedrock enables cost controls and model switching without code changes.
 
-\vspace{0.25em}
-\textbf{Docker + Kubernetes}: Containerization ensures consistent environments across development, staging, and production. Kubernetes orchestration (or ECS equivalents) provides auto-scaling for traffic spikes (e.g., batch onboarding runs), self-healing services, rolling updates, and zero-downtime deployments as agent logic evolves.
+\vspace{0.15em}
+\textbf{Docker + Kubernetes}: Consistent environments across dev/staging/prod. Auto-scaling for traffic spikes, self-healing services, rolling updates, and zero-downtime deployments.
 }
 \end{minipage}
 \hfill
@@ -488,48 +486,48 @@ directory in the repository.}}
 
 {\small\bfseries\color{primary} CI/CD \& Observability}
 
-\vspace{0.3em}
+\vspace{0.2em}
 {\scriptsize
-\textbf{CI/CD} (GitHub Actions / CodePipeline): Automated pipelines validate agent logic on every pull request, including unit tests for invariant checks, risk analysis, and decision routing. Deployments are reproducible and auditable, with fast feedback loops, reduced manual error, and the ability to roll back safely in case of regressions impacting onboarding outcomes.
+\textbf{CI/CD} (GitHub Actions / CodePipeline): Automated pipelines validate agent logic on every PR --- unit tests for invariant checks, risk analysis, and decision routing. Deployments are reproducible and auditable with fast feedback loops and safe rollback capability.
 
-\vspace{0.25em}
-\textbf{Dual Tracing (Implemented)}: The agent supports opt-in dual observability: \textbf{Pydantic Logfire} for native Pydantic AI agent tracing (reasoning chains, tool calls, structured output validation) and \textbf{LangSmith} via an OpenTelemetry bridge (\texttt{OtelSpanProcessor}) for LLM execution runs, token usage, and latency. Both can run simultaneously --- Logfire owns the TracerProvider and LangSmith attaches as a span processor.
+\vspace{0.15em}
+\textbf{Dual Tracing (Implemented)}: Opt-in dual observability: \textbf{Pydantic Logfire} for native agent tracing (reasoning chains, tool calls, structured output validation) and \textbf{LangSmith} via OpenTelemetry bridge for LLM execution runs, token usage, and latency. Both run simultaneously --- Logfire owns the TracerProvider, LangSmith attaches as a span processor.
 
-\vspace{0.25em}
-\textbf{Monitoring \& Alerting}: Prometheus metrics capture agent throughput, API error rates, and decision distributions. Distributed tracing via DataDog or Jaeger enables end-to-end visibility across webhook ingestion, integrations, LLM calls, and provisioning. PagerDuty alerts notify on-call teams of critical failures such as sustained API outages or elevated BLOCK rates.
+\vspace{0.15em}
+\textbf{Monitoring \& Alerting}: Prometheus metrics capture throughput, error rates, and decision distributions. Distributed tracing via DataDog or Jaeger for end-to-end visibility. PagerDuty alerts for critical failures.
 }
 \end{minipage}
 
 %-------------------------------
 % Agent Runtime & API Governance
 %-------------------------------
-\vspace{0.3em}
+\vspace{0.2em}
 {\small\bfseries\color{primary} Agentic Execution \& API Governance}
 
-\vspace{0.1em}
+\vspace{0.05em}
 {\scriptsize
-\textbf{Deterministic Decision Boundaries}: The onboarding agent uses an agentic architecture where the LLM reasons through tools via native tool calling (Pydantic AI \texttt{@agent.tool} decorators). However, deterministic business rules enforced by \texttt{validate\_business\_rules} and \texttt{check\_financial\_alignment} tools define all violations and warnings. The LLM decides the routing (\texttt{PROCEED}, \texttt{ESCALATE}, \texttt{BLOCK}) based on these tool outputs, ensuring predictable, testable, and auditable outcomes.
+\textbf{Deterministic Decision Boundaries}: The LLM reasons through tools via native tool calling (Pydantic AI \texttt{@agent.tool} decorators), but deterministic business rules enforced by \texttt{validate\_business\_rules} and \texttt{check\_financial\_alignment} define all violations and warnings. The LLM routes (\texttt{PROCEED}/\texttt{ESCALATE}/\texttt{BLOCK}) based on these outputs, ensuring predictable, testable, auditable outcomes.
 
-\vspace{0.15em}
-\textbf{Cross-System Data Chaining}: The agent fetches the Salesforce account first, then user/opportunity in parallel. Subsequent fetches chain sequentially: Opportunity.ContractId $\rightarrow$ SF Contract $\rightarrow$ CLM (via salesforce\_contract\_id) $\rightarrow$ Invoice (via clmContractRef). Fallback to account-based lookups if chain links are missing. For production, a tiered optimization strategy applies: \textbf{(1)} Batch API requests where supported (e.g., Salesforce Composite API); \textbf{(2)} Concurrent fetches for systems that don't support batching; \textbf{(3)} Bounded retry logic with exponential backoff (max 3 retries, 1s/2s/4s delays) for transient failures.
+\vspace{0.1em}
+\textbf{Cross-System Data Chaining}: Fetch account first, then user/opportunity in parallel. Sequential chain: Opportunity.ContractId $\rightarrow$ SF Contract $\rightarrow$ CLM (via salesforce\_contract\_id) $\rightarrow$ Invoice (via clmContractRef). Fallback to account-based lookups if chain links are missing. Production optimization: \textbf{(1)} Batch APIs (Salesforce Composite); \textbf{(2)} Concurrent fetches; \textbf{(3)} Bounded exponential backoff (max 3 retries, 1s/2s/4s).
 
-\vspace{0.15em}
-\textbf{Idempotency \& Correlation-Based Execution}: Each onboarding run is keyed by a \texttt{correlation\_id} propagated across webhook ingestion, integrations, logs, reports, and notifications. This enables safe replays, deduplication of duplicate webhook events, and re-entrant execution without risk of duplicate provisioning, notifications, or side effects.
+\vspace{0.1em}
+\textbf{Idempotency}: Each run keyed by \texttt{correlation\_id} propagated across all systems --- enables safe replays, deduplication, and re-entrant execution without duplicate side effects.
 
-\vspace{0.15em}
-\textbf{API Error Classification \& Retry Strategy}: External API failures are classified into retryable (e.g., transient 5xx, rate limiting) and non-retryable (e.g., validation, authorization) categories. Retryable errors follow bounded exponential backoff, while non-retryable errors immediately halt onboarding and surface actionable diagnostics. Circuit breakers prevent cascading failures across dependent systems.
+\vspace{0.1em}
+\textbf{Error Classification \& Retry}: Retryable (5xx, rate limits) $\rightarrow$ bounded exponential backoff. Non-retryable (validation, auth) $\rightarrow$ immediate halt with diagnostics. Circuit breakers prevent cascading failures.
 
-\vspace{0.15em}
-\textbf{Rate Limiting \& Backpressure}: Inbound webhook traffic is protected via per-source rate limits and queue-based ingestion to absorb traffic spikes from batch updates or retries. Concurrency limits are enforced per integration to prevent overwhelming Salesforce, CLM, or NetSuite APIs during peak load.
+\vspace{0.1em}
+\textbf{Rate Limiting}: Per-source rate limits and queue-based ingestion for webhook traffic spikes. Per-integration concurrency limits prevent API overload.
 
-\vspace{0.15em}
-\textbf{Agent Versioning \& Safe Rollouts}: Every onboarding run records the agent version, rule set, and prompt version used. This enables full auditability, regression analysis, and controlled rollouts (e.g., canary deployments) of agent logic and prompt updates without impacting in-flight executions.
+\vspace{0.1em}
+\textbf{Agent Versioning}: Every run records agent version, rule set, and prompt version for auditability, regression analysis, and controlled rollouts (canary deployments).
 
-\vspace{0.15em}
-\textbf{LLM Data Governance \& Security}: All data sent to LLMs is field-filtered and sanitized. PII is masked prior to inference, and credentials are never exposed beyond integration boundaries. Trust boundaries are strictly enforced at the API layer.
+\vspace{0.1em}
+\textbf{LLM Data Governance}: Field-filtered and sanitized data sent to LLMs. PII masked prior to inference. Credentials never exposed beyond integration boundaries.
 
-\vspace{0.15em}
-\textbf{Multi-Agent Interoperability}: All 21 agent tools are mirrored as FastMCP server definitions (7 servers in \texttt{app/mcp/}), separating agent logic from external system access. These can be extracted to standalone MCP services with independent versioning, access control, and audit logging. The A2A protocol provides a standardized layer for agent-to-agent collaboration without exposing internal state across boundaries.
+\vspace{0.1em}
+\textbf{Multi-Agent Interoperability}: All 24 tools mirrored as FastMCP server definitions (7 servers in \texttt{app/mcp/}). Extractable to standalone MCP services with independent versioning, access control, and audit logging. A2A protocol for agent-to-agent collaboration.
 }
 
 \begin{center}

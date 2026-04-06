@@ -7,13 +7,15 @@ An AI-powered customer onboarding automation agent built with **Pydantic AI + Fa
 This agent automates the customer journey from **Sales → Contract → Invoice → Provisioning**, featuring:
 
 - **Agentic Architecture**: The LLM reasons and decides which tools to call — no hardcoded state machine or graph
-- **Native Tool Calling**: 21 tools registered via `@agent.tool` decorators; the agent orchestrates them autonomously
+- **Native Tool Calling**: 24 tools registered via `@agent.tool` decorators; the agent orchestrates them autonomously
 - **Cross-System Data Chaining**: Sequential Sales → Contract → CLM → Invoice lookups where each system's output feeds the next
 - **Dual-Agent Design**: Onboarding agent (structured output) + CS Assistant agent (free-form chat for monitoring and actions)
-- **Streamlit UI**: Dashboard with onboarding progress, scenario runner, and interactive chat with the CS assistant
+- **Streamlit UI**: Dashboard with proactive alerts and suggested actions, portfolio overview, scenario runner, and interactive chat with multi-account commands
 - **MCP-Style Extensibility**: Every tool is mirrored as a FastMCP server definition for future extraction to standalone services
 - **Multi-System Integration**: Salesforce, CLM, NetSuite, currency conversion (live API), and SaaS provisioning
-- **Post-Provisioning Monitoring**: Onboarding progress tracking, risk detection, task reminders, and escalation tools
+- **Post-Provisioning Monitoring**: Onboarding progress tracking, risk detection, task reminders, escalation tools, and portfolio-wide alerts
+- **Proactive Alerts & Suggested Actions**: Automated risk surfacing with one-click approve/dismiss actions across all accounts
+- **Portfolio Management**: Aggregated health view across all accounts with priority actions and batch operations
 - **Live Currency Conversion**: Historical and latest USD/CAD exchange rates via Frankfurter API (ECB data) for financial alignment checks
 - **Financial Alignment Detection**: Automated comparison of opportunity deal values vs invoice totals across currencies (2% threshold)
 - **Configurable Error Simulation**: Auth failures, permission errors, validation errors, rate limits, server errors with adjustable probabilities
@@ -42,10 +44,11 @@ Onboarding Agent (Pydantic AI — structured output)
   ├── Currency Tool (1)      → Historical/live exchange rates (Frankfurter API)
   ├── Provisioning (1)       → SaaS tenant creation
   ├── CS Monitoring (5)      → Progress tracking, risk detection, reminders, escalation, task updates
+  ├── Portfolio Tools (3)    → Portfolio overview, aggregated alerts, batch reminders
   └── Notification Tools (6) → Slack, Email, Welcome
 
-CS Assistant Agent (Pydantic AI — free-form text, shares all 21 tools)
-  └── Interactive chat for CS team to query status, identify risks, and take actions
+CS Assistant Agent (Pydantic AI — free-form text, shares all 24 tools)
+  └── Interactive chat for CS team to query status, identify risks, manage portfolio, and take batch actions
 ```
 
 The agent decides **what to call, in what order, and how many times** based on tool results. Adding a new capability means registering a new `@agent.tool` — zero changes to orchestration logic.
@@ -161,7 +164,21 @@ flowchart LR
         N_EMAIL["send_email\n(CS team summary)"]
         N_WEL["send_customer_welcome\n(welcome email)"]
   end
- subgraph AGENT["2 · PYDANTIC AI AGENT — 21 tools via @agent.tool"]
+ subgraph MONITOR["Post-provisioning monitoring"]
+    direction LR
+        MON_PROG["check_onboarding\n_progress"]
+        MON_RISK["identify_onboarding\n_risks"]
+        MON_REM["send_task_reminder"]
+        MON_ESC["escalate_stalled\n_onboarding"]
+        MON_UPD["update_onboarding\n_task"]
+  end
+ subgraph PORTFOLIO["Portfolio management"]
+    direction LR
+        PORT_OV["get_portfolio\n_overview"]
+        PORT_AL["get_all_alerts"]
+        PORT_BA["batch_send\n_reminders"]
+  end
+ subgraph AGENT["2 · PYDANTIC AI AGENT — 24 tools via @agent.tool"]
         ENTRY["Initialize OnboardingDeps\n(account_id, correlation_id)"]
         FETCH
         VALIDATE
@@ -169,6 +186,8 @@ flowchart LR
         ACT_B
         ACT_E
         ACT_P
+        MONITOR
+        PORTFOLIO
         OUTPUT["OnboardingResult\n(Pydantic structured output)"]
   end
  subgraph REPORTS["3 · GENERATED REPORTS — post-run artifacts"]
@@ -217,7 +236,9 @@ flowchart LR
     DECIDE -- all clear\n(no issues) --> ACT_P
     ACT_B --> OUTPUT
     ACT_E --> OUTPUT
-    ACT_P --> OUTPUT
+    ACT_P -- post-provisioning --> MONITOR
+    MONITOR --> OUTPUT
+    PORTFOLIO -. "portfolio-wide\n(CS assistant)" .-> OUTPUT
     OUTPUT --> REPORTS
     AGENT -.-> OBS
     AGENT -. every tool mirrored as FastMCP server .-> MCP
@@ -257,6 +278,14 @@ flowchart LR
      MCP_PRV:::mcp
      MCP_NOT:::mcp
      MCP_VAL:::mcp
+     MON_PROG:::monitor
+     MON_RISK:::monitor
+     MON_REM:::monitor
+     MON_ESC:::monitor
+     MON_UPD:::monitor
+     PORT_OV:::portfolio
+     PORT_AL:::portfolio
+     PORT_BA:::portfolio
      SF:::ext
      CLM_EXT:::ext
      NS:::ext
@@ -276,6 +305,8 @@ flowchart LR
     classDef mcp       fill:#f0f0f0,stroke:#888,stroke-width:1px,stroke-dasharray:5 5,color:#555
     classDef ext       fill:#dbeafe,stroke:#3b82f6,stroke-width:1px,color:#1f2937
     classDef obs       fill:#fef3c7,stroke:#d97706,stroke-width:1px,stroke-dasharray:5 5,color:#92400e
+    classDef monitor   fill:#e0f2fe,stroke:#0284c7,stroke-width:1px,color:#1f2937
+    classDef portfolio fill:#fce7f3,stroke:#db2777,stroke-width:1px,color:#1f2937
 ```
 
 ### Decision Logic
@@ -432,19 +463,24 @@ uvicorn main:app --reload
 
 ### Normal Scenarios
 
-| Account ID | Scenario | Expected Decision |
-|------------|----------|-------------------|
-| ACME-001 | Happy Path — Full Success | ✅ PROCEED |
-| BETA-002 | Opportunity Not Won | 🚫 BLOCK |
-| GAMMA-003 | Overdue Invoice | ⚠️ ESCALATE |
-| DELETED-004 | Deleted Account | 🚫 BLOCK |
-| MISSING-999 | Account Not Found | 🚫 BLOCK |
-| FOREX-005 | FX Invoice Mismatch (CAD vs USD) | ⚠️ ESCALATE |
-| PARTIAL-006 | Partial Payment Gap (5% underpayment) | ⚠️ ESCALATE |
+| Account ID | Scenario | Expected Decision | Post-Provisioning Simulation |
+|------------|----------|-------------------|------------------------------|
+| ACME-001 | Happy Path — Full Success | ✅ PROCEED | — |
+| BETA-002 | Opportunity Not Won | 🚫 BLOCK | — |
+| GAMMA-003 | Overdue Invoice | ⚠️ ESCALATE | — |
+| DELETED-004 | Deleted Account | 🚫 BLOCK | — |
+| MISSING-999 | Account Not Found | 🚫 BLOCK | — |
+| FOREX-005 | FX Invoice Mismatch (CAD vs USD) | ⚠️ ESCALATE | — |
+| PARTIAL-006 | Partial Payment Gap (5% underpayment) | ⚠️ ESCALATE | — |
+| STARTER-007 | Proceed — Customer Not Logged In | ✅ PROCEED | `no_login` — 5 days since provisioning, customer hasn't logged in |
+| GROWTH-008 | Proceed — Stalled Onboarding | ✅ PROCEED | `stalled` — 10 days in, <30% complete, kickoff not done |
+| ENTERPRISE-009 | Proceed — SSO & Blocked Tasks | ✅ PROCEED | `blocked_sso` — 8 days in, SSO blocked, multiple tasks overdue |
 
 **FOREX-005** demonstrates historical currency conversion: the invoice is in CAD ($145,000) while the opportunity is in USD ($100,000). The conversion uses the ECB rate from the invoice date (2024-03-01), not today's rate, ensuring financial accuracy. The resulting gap exceeds the 2% threshold, triggering escalation.
 
 **PARTIAL-006** demonstrates underpayment detection: $190,000 paid of a $200,000 invoice (5% gap) exceeds the 2% financial alignment threshold.
+
+**STARTER-007 / GROWTH-008 / ENTERPRISE-009** are PROCEED scenarios with post-provisioning simulation that backdates the provisioning timestamp and manipulates task states to create realistic onboarding risk conditions. These power the proactive alerts, suggested actions, and portfolio overview features.
 
 ### Error Simulation
 
@@ -664,16 +700,20 @@ The project includes a **dual-agent architecture** and a **Streamlit UI** for in
 
 ### CS Assistant Agent
 
-A second agent (`cs_assistant_agent`) shares all 21 tools but returns free-form text instead of structured output. It enables CS managers to interact conversationally:
+A second agent (`cs_assistant_agent`) shares all 24 tools but returns free-form text instead of structured output. It enables CS managers to interact conversationally:
 
 - "What's the onboarding progress for ACME-001?"
 - "Are there any risks with this account?"
 - "Send a reminder about the login task"
 - "Escalate this onboarding — customer is unresponsive"
+- "Show me all at-risk accounts"
+- "What's my most urgent account?"
+- "Send reminders to all overdue tasks"
+- "Give me a daily summary of all my accounts"
 
 The assistant retains conversation history across messages within a session.
 
-### Streamlit UI (3 pages)
+### Streamlit UI (4 pages)
 
 Start the UI alongside the FastAPI backend:
 
@@ -687,11 +727,12 @@ uv run streamlit run streamlit_app.py
 
 | Page | Description |
 |------|-------------|
-| **Dashboard** | All onboarding results grouped by decision (Proceeded/Blocked/Escalated) with health badges, completion %, overdue/blocked task counts, and expandable risk details |
-| **Run Onboarding** | Scenario selector, run button, tabbed results (violations/warnings/actions/provisioning), and run-all-scenarios batch mode |
-| **Chat with Agent** | Interactive chat with the CS assistant, sidebar quick actions (Check Progress, Identify Risks), and per-account context |
+| **Dashboard** | Proactive alerts grouped by account, smart suggested actions with approve/dismiss, all onboarding results grouped by decision with health badges and expandable details |
+| **Portfolio Overview** | Aggregated health metrics (On Track/At Risk/Stalled/Blocked/Escalated), priority actions today, and sortable account table |
+| **Run Onboarding** | Scenario selector, run button, tabbed results (violations/warnings/actions/provisioning with live progress), and run-all-scenarios batch mode |
+| **Chat with Agent** | Interactive chat with the CS assistant, account dropdown selector, portfolio-level quick actions (Portfolio Summary, All Alerts, Send All Reminders), and per-account actions |
 
-### CS Monitoring Tools (5 new tools)
+### CS Monitoring Tools (5 tools)
 
 | Tool | Description |
 |------|-------------|
@@ -700,6 +741,14 @@ uv run streamlit run streamlit_app.py
 | `send_task_reminder` | Sends reminder to task owner (customer or CS team) |
 | `escalate_stalled_onboarding` | Posts to #cs-onboarding-escalations with progress snapshot |
 | `update_onboarding_task` | Update task status (pending/in_progress/completed/blocked/skipped) |
+
+### Portfolio Management Tools (3 tools)
+
+| Tool | Description |
+|------|-------------|
+| `get_portfolio_overview` | Aggregated health distribution, account list with completion %, and top priority actions across all accounts |
+| `get_all_alerts` | All risk alerts across the portfolio, sorted by severity (critical > high > medium > low) |
+| `batch_send_reminders` | Sends reminders to all accounts matching a filter (overdue tasks, no login, or stalled onboardings) |
 
 ### CS Monitoring Endpoints
 
@@ -711,6 +760,15 @@ uv run streamlit run streamlit_app.py
 | POST | `/demo/escalate/{account_id}` | Escalate stalled onboarding |
 | GET | `/demo/active-onboardings` | All onboarding results with progress |
 | POST | `/demo/chat` | Chat with CS assistant agent |
+
+### Portfolio & Proactive Alerts Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/demo/alerts` | Aggregated risk alerts across all accounts (provisioned + blocked/escalated) |
+| GET | `/demo/portfolio-summary` | Portfolio overview with health distribution, account list, and priority actions |
+| GET | `/demo/suggested-actions` | Smart suggested actions with approve/dismiss across all accounts |
+| POST | `/demo/execute-action` | Execute a suggested action (send reminder, escalate, re-run onboarding, etc.) |
 
 ## 📁 Project Structure
 
@@ -729,7 +787,7 @@ Enterprise-Agents-Solutions-Case-Study/
 └── app/
     ├── agent/                            # Pydantic AI agents
     │   ├── __init__.py                   # run_onboarding_async() entry point
-    │   ├── onboarding_agent.py           # Onboarding agent (21 tools) + CS assistant agent
+    │   ├── onboarding_agent.py           # Onboarding agent (24 tools) + CS assistant agent
     │   ├── dependencies.py               # OnboardingDeps (runtime context)
     │   ├── models.py                     # OnboardingResult (structured output)
     │   ├── state_utils.py                # State manipulation utilities
@@ -798,7 +856,7 @@ The following features would enhance the agent for production use:
 
 | Limitation | Current State | Production Enhancement |
 |------------|---------------|----------------------|
-| **No human-in-the-loop approval** | ESCALATE notifies but doesn't wait for approval | Add Slack interactive buttons for approve/reject before provisioning |
+| **No human-in-the-loop approval** | Suggested Actions panel provides approve/dismiss UI for risk-derived actions; ESCALATE decisions can be reviewed and re-run | Add Slack interactive buttons for approve/reject before provisioning |
 | **Event-driven task completion** | Tasks must be manually marked complete via API | Integrate webhooks from SaaS platform to auto-complete when customer takes action |
 | **No customer-facing portal** | Customer can't see their onboarding progress | Build React dashboard showing task checklist and status |
 | **Single workflow execution** | Agent runs once per trigger | Add retry/resume capability for failed workflows |
@@ -815,9 +873,13 @@ The following features would enhance the agent for production use:
 | Risk analysis recommendations | ✅ Proactive | LLM suggests actions before problems escalate |
 | Task overdue detection | ✅ Proactive | CS assistant detects overdue tasks via `identify_onboarding_risks` |
 | Task due date reminders | ✅ Proactive | `send_task_reminder` tool sends reminders to task owners |
+| Proactive alerts panel | ✅ Proactive | Dashboard surfaces urgent items automatically, grouped by account |
+| Suggested actions with approve/dismiss | ✅ Proactive | Risk-derived actions with one-click execution and detailed explanations |
+| Portfolio health overview | ✅ Proactive | Aggregated health distribution and priority actions across all accounts |
+| Batch portfolio operations | ✅ Proactive | Send reminders to all overdue/stalled accounts via chat or UI |
 | Customer action tracking | ⚠️ Passive | Agent can check progress but no auto-detection via webhooks |
 | Escalation to management | ✅ Proactive | `escalate_stalled_onboarding` posts to #cs-onboarding-escalations |
-| Interactive CS dashboard | ✅ Implemented | Streamlit UI with Dashboard, Run Onboarding, and Chat pages |
+| Interactive CS dashboard | ✅ Implemented | Streamlit UI with Dashboard, Portfolio, Run Onboarding, and Chat pages |
 
 ### Suggested Enhancements
 
