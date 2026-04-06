@@ -329,13 +329,17 @@ def _get_task_summary(tasks: List[OnboardingTask]) -> dict:
                     "due_date": task.due_date,
                 })
     
+    skipped = sum(1 for t in tasks if t.status == TaskStatus.SKIPPED)
+    actionable = total - skipped
+
     return {
         "total_tasks": total,
         "completed": completed,
         "pending": pending,
         "in_progress": in_progress,
         "blocked": blocked,
-        "completion_percentage": round((completed / total) * 100) if total > 0 else 0,
+        "skipped": skipped,
+        "completion_percentage": round((completed / actionable) * 100) if actionable > 0 else 0,
         "next_actions": next_actions[:3],  # Top 3 next actions
     }
 
@@ -536,6 +540,9 @@ def simulate_onboarding_progress(account_id: str, profile: str) -> None:
                 pass  # Still pending, overdue (due day 5, now day 8)
             elif task.task_id.endswith("T011"):
                 pass  # Still pending, overdue (due day 7, now day 8)
+
+    # Refresh the stored task summary so it stays in sync with actual task state
+    _PROVISIONED_ACCOUNTS[account_id]["onboarding_tasks"] = _get_task_summary(tasks)
 
 
 # ============================================================================

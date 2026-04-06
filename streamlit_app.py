@@ -154,7 +154,7 @@ if page == "Dashboard":
                     st.markdown("")
         st.markdown("---")
 
-    # --- Smart Suggested Actions ---
+    # --- Smart Suggested Actions (grouped by account) ---
     actions_data = api_get("/suggested-actions")
     if actions_data and actions_data.get("action_count", 0) > 0:
         visible_actions = [
@@ -162,64 +162,69 @@ if page == "Dashboard":
             if a.get("action_id") not in st.session_state.dismissed_actions
         ]
         if visible_actions:
-            st.subheader(f"Suggested Actions ({len(visible_actions)})")
+            st.subheader(f"Suggested Actions ({len(visible_actions)} accounts)")
             for action in visible_actions:
-                action_type = action.get("action_type", "")
-                # Build detailed explanation based on action type
-                if action_type == "send_login_reminder":
-                    detail = (
-                        f"The customer for **{action['account_id']}** has not logged in since provisioning. "
-                        f"Approving will send a reminder email asking them to log in and start onboarding."
-                    )
-                elif action_type == "send_task_reminder":
-                    detail = (
-                        f"An onboarding task for **{action['account_id']}** is overdue. "
-                        f"Approving will send a reminder to the task owner to complete it."
-                    )
-                elif action_type == "escalate":
-                    detail = (
-                        f"The onboarding for **{action['account_id']}** has stalled with low completion. "
-                        f"Approving will escalate to CS management via #cs-onboarding-escalations."
-                    )
-                elif action_type == "escalate_blocked":
-                    detail = (
-                        f"A task for **{action['account_id']}** is blocked and preventing progress. "
-                        f"Approving will escalate to CS management for investigation."
-                    )
-                elif action_type == "schedule_sso_followup":
-                    detail = (
-                        f"SSO integration for **{action['account_id']}** has not been configured after kickoff. "
-                        f"Approving will mark the SSO task as in-progress and flag for follow-up with customer IT."
-                    )
-                elif action_type == "rerun_onboarding":
-                    detail = (
-                        f"The onboarding for **{action['account_id']}** was previously blocked. "
-                        f"Approving will re-run the full onboarding process to check if issues are resolved."
-                    )
-                elif action_type == "review_escalation":
-                    detail = (
-                        f"The onboarding for **{action['account_id']}** was escalated due to warnings. "
-                        f"Approving will mark it as reviewed. Use Chat to discuss resolution steps."
-                    )
-                else:
-                    detail = action['description']
+                sub_actions = action.get("sub_actions", [])
+                account_id = action["account_id"]
+
+                # Build per-sub-action detail lines
+                detail_lines = []
+                for sub in sub_actions:
+                    action_type = sub.get("action_type", "")
+                    if action_type == "send_login_reminder":
+                        detail_lines.append(
+                            "Customer has not logged in since provisioning — send a reminder email."
+                        )
+                    elif action_type == "send_task_reminder":
+                        detail_lines.append(
+                            "An onboarding task is overdue — send a reminder to the task owner."
+                        )
+                    elif action_type == "escalate":
+                        detail_lines.append(
+                            "Onboarding has stalled with low completion — escalate to CS management."
+                        )
+                    elif action_type == "escalate_blocked":
+                        detail_lines.append(
+                            "A task is blocked and preventing progress — escalate for investigation."
+                        )
+                    elif action_type == "schedule_sso_followup":
+                        detail_lines.append(
+                            "SSO integration not configured after kickoff — start follow-up with customer IT."
+                        )
+                    elif action_type == "rerun_onboarding":
+                        detail_lines.append(
+                            "Onboarding was previously blocked — re-run to check if issues are resolved."
+                        )
+                    elif action_type == "review_escalation":
+                        detail_lines.append(
+                            "Onboarding was escalated due to warnings — mark as reviewed."
+                        )
+                    else:
+                        detail_lines.append(sub["description"])
 
                 with st.container():
                     st.markdown(
-                        f"{action.get('icon', '📋')} **{action['account_id']}**: "
+                        f"{action.get('icon', '📋')} **{account_id}**: "
                         f"{action['description']}"
                     )
-                    st.caption(detail)
+                    if len(detail_lines) == 1:
+                        st.caption(detail_lines[0])
+                    else:
+                        for i, line in enumerate(detail_lines, 1):
+                            st.caption(f"{i}. {line}")
+
                     col_approve, col_dismiss, col_spacer = st.columns([1, 1, 6])
                     with col_approve:
-                        if st.button("Approve", key=f"approve_{action['action_id']}", type="primary"):
-                            api_post("/execute-action", json={
-                                "action_type": action["action_type"],
-                                "account_id": action["account_id"],
-                                "task_id": action.get("task_id", ""),
-                                "params": action.get("params", {}),
-                            })
-                            st.toast(f"Action executed for {action['account_id']}")
+                        if st.button("Approve All" if len(sub_actions) > 1 else "Approve",
+                                     key=f"approve_{action['action_id']}", type="primary"):
+                            for sub in sub_actions:
+                                api_post("/execute-action", json={
+                                    "action_type": sub["action_type"],
+                                    "account_id": sub["account_id"],
+                                    "task_id": sub.get("task_id", ""),
+                                    "params": sub.get("params", {}),
+                                })
+                            st.toast(f"{'All actions' if len(sub_actions) > 1 else 'Action'} executed for {account_id}")
                             st.rerun()
                     with col_dismiss:
                         if st.button("Dismiss", key=f"dismiss_{action['action_id']}"):

@@ -695,19 +695,45 @@ async def get_alerts():
 
 @router.get("/portfolio-summary")
 async def get_portfolio_summary():
-    """Get aggregated portfolio stats + priority actions."""
+    """Get aggregated portfolio stats + priority actions.
+
+    Derives accounts from _ALL_RUN_RESULTS (the same source as the Dashboard)
+    so both views always show identical completion percentages.
+    """
     from app.integrations import provisioning
 
-    summary = provisioning.get_portfolio_summary()
+    health_dist: dict[str, int] = {
+        "on_track": 0, "at_risk": 0, "stalled": 0,
+        "blocked": 0, "escalated": 0,
+    }
+    accounts: list[dict] = []
 
-    # Also include blocked/escalated accounts from _ALL_RUN_RESULTS
     for account_id, run in _ALL_RUN_RESULTS.items():
         decision = run.get("decision", "UNKNOWN")
-        if decision in ("BLOCK", "ESCALATE") and not provisioning.is_provisioned(account_id):
-            summary["accounts"].append({
+
+        if decision == "PROCEED":
+            progress = provisioning.check_onboarding_progress(account_id)
+            health = progress.get("health_status", "on_track")
+            if health in health_dist:
+                health_dist[health] += 1
+            accounts.append({
                 "account_id": account_id,
                 "decision": decision,
-                "health_status": "blocked" if decision == "BLOCK" else "escalated",
+                "tier": progress.get("tier"),
+                "health_status": health,
+                "completion_percentage": progress.get("completion_percentage", 0),
+                "days_since_provisioning": progress.get("days_since_provisioning", 0),
+                "overdue_count": len(progress.get("overdue_tasks", [])),
+                "blocked_count": progress.get("task_breakdown", {}).get("blocked", 0),
+                "scenario_name": run.get("scenario_name", ""),
+            })
+        elif decision in ("BLOCK", "ESCALATE"):
+            status_key = "blocked" if decision == "BLOCK" else "escalated"
+            health_dist[status_key] = health_dist.get(status_key, 0) + 1
+            accounts.append({
+                "account_id": account_id,
+                "decision": decision,
+                "health_status": status_key,
                 "completion_percentage": 0,
                 "days_since_provisioning": 0,
                 "overdue_count": 0,
@@ -715,31 +741,38 @@ async def get_portfolio_summary():
                 "tier": None,
                 "scenario_name": run.get("scenario_name", ""),
             })
-            summary["health_distribution"][decision.lower()] = (
-                summary["health_distribution"].get(decision.lower(), 0) + 1
-            )
 
-    summary["total_accounts"] = len(summary["accounts"])
-    return summary
+    # Priority actions from provisioned accounts
+    priority_actions = provisioning.get_all_alerts()[:5]
+
+    return {
+        "total_accounts": len(accounts),
+        "health_distribution": health_dist,
+        "accounts": accounts,
+        "priority_actions": priority_actions,
+    }
 
 
 @router.get("/suggested-actions")
 async def get_suggested_actions():
-    """Get actionable suggestions derived from risks across all accounts."""
+    """Get actionable suggestions derived from risks across all accounts.
+
+    Returns one compound action per account, containing all sub-actions so the
+    dashboard never shows duplicate cards for the same account.
+    """
+    from collections import OrderedDict
     from app.integrations import provisioning
 
-    # Actions from provisioned accounts (task-level)
-    actions = provisioning.get_all_suggested_actions()
+    # Collect raw per-risk actions
+    raw_actions: list[dict] = provisioning.get_all_suggested_actions()
 
     # Actions from blocked/escalated accounts (decision-level)
-    action_counter = 0
     for account_id, run in _ALL_RUN_RESULTS.items():
         decision = run.get("decision", "UNKNOWN")
         if decision == "BLOCK":
-            action_counter += 1
             violations = run.get("violations", {})
             top_domain = next(iter(violations), "unknown")
-            actions.append({
+            raw_actions.append({
                 "action_id": f"act-block-{account_id}",
                 "action_type": "rerun_onboarding",
                 "description": f"Fix {top_domain} issues and re-run onboarding for {account_id}",
@@ -750,8 +783,7 @@ async def get_suggested_actions():
                 "params": {},
             })
         elif decision == "ESCALATE" and not provisioning.is_provisioned(account_id):
-            action_counter += 1
-            actions.append({
+            raw_actions.append({
                 "action_id": f"act-esc-{account_id}",
                 "action_type": "review_escalation",
                 "description": f"Review escalated warnings and approve onboarding for {account_id}",
@@ -762,10 +794,29 @@ async def get_suggested_actions():
                 "params": {},
             })
 
-    # Re-sort by severity
+    # Group by account — one compound entry per account
     sev_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-    actions.sort(key=lambda a: sev_order.get(a.get("severity", "low"), 4))
-    return {"action_count": len(actions), "actions": actions}
+    by_account: OrderedDict[str, list[dict]] = OrderedDict()
+    for act in raw_actions:
+        by_account.setdefault(act["account_id"], []).append(act)
+
+    grouped: list[dict] = []
+    for account_id, sub_actions in by_account.items():
+        sub_actions.sort(key=lambda a: sev_order.get(a.get("severity", "low"), 4))
+        top_severity = sub_actions[0].get("severity", "low")
+        top_icon = sub_actions[0].get("icon", "📋")
+        descriptions = [a["description"] for a in sub_actions]
+        grouped.append({
+            "action_id": f"act-group-{account_id}",
+            "account_id": account_id,
+            "icon": top_icon,
+            "severity": top_severity,
+            "description": descriptions[0] if len(descriptions) == 1 else f"{len(descriptions)} actions needed",
+            "sub_actions": sub_actions,
+        })
+
+    grouped.sort(key=lambda a: sev_order.get(a.get("severity", "low"), 4))
+    return {"action_count": len(grouped), "actions": grouped}
 
 
 class ExecuteActionRequest(BaseModel):
