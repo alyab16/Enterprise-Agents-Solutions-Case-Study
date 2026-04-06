@@ -126,8 +126,11 @@ def notify_cs_team_blocked(
     
     violation_list = []
     for domain, msgs in violations.items():
-        for msg in msgs:
-            violation_list.append(f"• *{domain}*: {msg}")
+        if isinstance(msgs, list):
+            for msg in msgs:
+                violation_list.append(f"• *{domain}*: {msg}")
+        else:
+            violation_list.append(f"• *{domain}*: {msgs}")
     
     message = f"""🚨 *Onboarding BLOCKED* for {account_name}
 
@@ -163,8 +166,11 @@ def notify_cs_team_escalation(
     
     warning_list = []
     for domain, msgs in warnings.items():
-        for msg in msgs:
-            warning_list.append(f"• *{domain}*: {msg}")
+        if isinstance(msgs, list):
+            for msg in msgs:
+                warning_list.append(f"• *{domain}*: {msg}")
+        else:
+            warning_list.append(f"• *{domain}*: {msgs}")
     
     message = f"""⚠️ *Onboarding Needs Review* for {account_name}
 

@@ -453,6 +453,82 @@ MOCK_INVOICES_DB: Dict[str, Dict[str, Any]] = {
             {"rel": "self", "href": "/invoice/1006"}
         ]
     },
+    # --- Additional PROCEED scenarios ---
+    "1007": {
+        "id": "1007",
+        "tranId": "INV-2024-007",
+        "externalId": "STARTER-007-INV",
+        "clmContractRef": "CLM-CTR-007",
+        "entity": {"id": "107", "refName": "NovaTech Solutions"},
+        "tranDate": "2024-03-01",
+        "dueDate": "2024-03-31",
+        "status": {"id": "B", "refName": "Paid In Full"},
+        "currency": {"id": "1", "refName": "USD"},
+        "exchangeRate": 1.0,
+        "subtotal": 15000.00,
+        "taxTotal": 0.00,
+        "total": 15000.00,
+        "amountPaid": 15000.00,
+        "amountRemaining": 0.00,
+        "terms": {"id": "1", "refName": "Net 30"},
+        "memo": "Starter platform - annual license",
+        "createdDate": "2024-03-01T09:00:00Z",
+        "email": "billing@novatech.io",
+        "subsidiary": {"id": "1", "refName": "StackAdapt Inc."},
+        "item": {"items": [{"item": {"id": "503", "refName": "Starter License"}, "description": "Starter Platform - 12 Month", "quantity": 1, "rate": 15000.00, "amount": 15000.00}]},
+        "links": [{"rel": "self", "href": "/invoice/1007"}]
+    },
+    "1008": {
+        "id": "1008",
+        "tranId": "INV-2024-008",
+        "externalId": "GROWTH-008-INV",
+        "clmContractRef": "CLM-CTR-008",
+        "entity": {"id": "108", "refName": "Horizon Analytics"},
+        "tranDate": "2024-02-15",
+        "dueDate": "2024-03-17",
+        "status": {"id": "B", "refName": "Paid In Full"},
+        "currency": {"id": "1", "refName": "USD"},
+        "exchangeRate": 1.0,
+        "subtotal": 50000.00,
+        "taxTotal": 0.00,
+        "total": 50000.00,
+        "amountPaid": 50000.00,
+        "amountRemaining": 0.00,
+        "terms": {"id": "1", "refName": "Net 30"},
+        "memo": "Growth platform - annual license",
+        "createdDate": "2024-02-15T09:00:00Z",
+        "email": "billing@horizonanalytics.ca",
+        "subsidiary": {"id": "1", "refName": "StackAdapt Inc."},
+        "item": {"items": [{"item": {"id": "504", "refName": "Growth License"}, "description": "Growth Platform - 12 Month", "quantity": 1, "rate": 50000.00, "amount": 50000.00}]},
+        "links": [{"rel": "self", "href": "/invoice/1008"}]
+    },
+    "1009": {
+        "id": "1009",
+        "tranId": "INV-2024-009",
+        "externalId": "ENTERPRISE-009-INV",
+        "clmContractRef": "CLM-CTR-009",
+        "entity": {"id": "109", "refName": "Atlas Global Corp"},
+        "tranDate": "2024-01-30",
+        "dueDate": "2024-03-01",
+        "status": {"id": "B", "refName": "Paid In Full"},
+        "currency": {"id": "1", "refName": "USD"},
+        "exchangeRate": 1.0,
+        "subtotal": 250000.00,
+        "taxTotal": 0.00,
+        "total": 250000.00,
+        "amountPaid": 250000.00,
+        "amountRemaining": 0.00,
+        "terms": {"id": "1", "refName": "Net 30"},
+        "memo": "Enterprise platform - annual license + services",
+        "createdDate": "2024-01-30T09:00:00Z",
+        "email": "ap@atlasglobal.com",
+        "subsidiary": {"id": "1", "refName": "StackAdapt Inc."},
+        "item": {"items": [
+            {"item": {"id": "501", "refName": "Enterprise License"}, "description": "Enterprise Platform - 12 Month", "quantity": 1, "rate": 200000.00, "amount": 200000.00},
+            {"item": {"id": "502", "refName": "Professional Services"}, "description": "Implementation & Training", "quantity": 1, "rate": 50000.00, "amount": 50000.00},
+        ]},
+        "links": [{"rel": "self", "href": "/invoice/1009"}]
+    },
 }
 
 # Mapping from external account IDs to NetSuite invoice IDs
@@ -463,6 +539,9 @@ ACCOUNT_TO_INVOICE_MAP = {
     "DELTA-004": "1004",
     "FOREX-005": "1005",
     "PARTIAL-006": "1006",
+    "STARTER-007": "1007",
+    "GROWTH-008": "1008",
+    "ENTERPRISE-009": "1009",
     # Error simulation accounts
     "AUTH-ERROR": "_auth_error",
     "PERM-ERROR": "_perm_error",
@@ -491,7 +570,7 @@ class NetSuiteClient:
         self.config = config or _config
         self._request_count = 0
         self._concurrent_requests = 0
-        self._max_concurrent = 10  # NetSuite concurrency limit
+        self._max_concurrent = 100  # NetSuite concurrency limit (high for demo batch runs)
     
     def _check_auth(self) -> None:
         """Validate authentication before making requests."""

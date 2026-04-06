@@ -96,5 +96,29 @@ def update_task_status(account_id: str, task_id: str, status: str, notes: str = 
     return provisioning.update_task_status(account_id, task_id, status, notes=notes or None)
 
 
+@mcp.tool()
+def get_all_alerts() -> list:
+    """Get aggregated risk alerts across all provisioned accounts, sorted by severity."""
+    from app.integrations import provisioning
+
+    return provisioning.get_all_alerts()
+
+
+@mcp.tool()
+def get_portfolio_summary() -> dict:
+    """Get portfolio-level summary: health distribution, account list, priority actions."""
+    from app.integrations import provisioning
+
+    return provisioning.get_portfolio_summary()
+
+
+@mcp.tool()
+def get_all_suggested_actions() -> list:
+    """Get actionable suggestions derived from risks across all accounts."""
+    from app.integrations import provisioning
+
+    return provisioning.get_all_suggested_actions()
+
+
 if __name__ == "__main__":
     mcp.run()

@@ -166,6 +166,58 @@ MOCK_ACCOUNTS = {
             "url": "/services/data/v59.0/sobjects/Account/0018Z00003PARTLQ"
         }
     },
+    # --- Additional PROCEED scenarios for risk demonstration ---
+    "STARTER-007": {
+        "Id": "0018Z00003STARTQ",
+        "Name": "NovaTech Solutions",
+        "BillingCountry": "United States",
+        "BillingCity": "Denver",
+        "BillingState": "CO",
+        "Industry": "Software",
+        "OwnerId": "0058Z000001OWNER",
+        "IsDeleted": False,
+        "Type": "Customer",
+        "NumberOfEmployees": 25,
+        "AnnualRevenue": 3000000,
+        "attributes": {
+            "type": "Account",
+            "url": "/services/data/v59.0/sobjects/Account/0018Z00003STARTQ"
+        }
+    },
+    "GROWTH-008": {
+        "Id": "0018Z00003GROWTHQ",
+        "Name": "Horizon Analytics",
+        "BillingCountry": "Canada",
+        "BillingCity": "Vancouver",
+        "BillingState": "BC",
+        "Industry": "Data Analytics",
+        "OwnerId": "0058Z000001OWNER",
+        "IsDeleted": False,
+        "Type": "Customer",
+        "NumberOfEmployees": 150,
+        "AnnualRevenue": 20000000,
+        "attributes": {
+            "type": "Account",
+            "url": "/services/data/v59.0/sobjects/Account/0018Z00003GROWTHQ"
+        }
+    },
+    "ENTERPRISE-009": {
+        "Id": "0018Z00003ENTPRQ",
+        "Name": "Atlas Global Corp",
+        "BillingCountry": "United States",
+        "BillingCity": "New York",
+        "BillingState": "NY",
+        "Industry": "Financial Services",
+        "OwnerId": "0058Z000001OWNER",
+        "IsDeleted": False,
+        "Type": "Customer",
+        "NumberOfEmployees": 2000,
+        "AnnualRevenue": 500000000,
+        "attributes": {
+            "type": "Account",
+            "url": "/services/data/v59.0/sobjects/Account/0018Z00003ENTPRQ"
+        }
+    },
     # Special error simulation accounts
     "AUTH-ERROR": {
         "_simulate_error": "authentication",
@@ -303,6 +355,61 @@ MOCK_OPPORTUNITIES = {
             "url": "/services/data/v59.0/sobjects/Opportunity/0068Z000001OPPPARTL"
         }
     },
+    # --- Additional PROCEED scenarios ---
+    "OPP-STARTER-007": {
+        "Id": "0068Z000001OPPSTART",
+        "Name": "NovaTech Solutions - Starter Plan",
+        "AccountId": "0018Z00003STARTQ",
+        "StageName": "Closed Won",
+        "Amount": 15000.00,
+        "CloseDate": "2024-03-01",
+        "OwnerId": "0058Z000001OWNER",
+        "ContractId": "8008Z000000START",
+        "IsClosed": True,
+        "IsWon": True,
+        "Probability": 100,
+        "Type": "New Business",
+        "attributes": {
+            "type": "Opportunity",
+            "url": "/services/data/v59.0/sobjects/Opportunity/0068Z000001OPPSTART"
+        }
+    },
+    "OPP-GROWTH-008": {
+        "Id": "0068Z000001OPPGROWTH",
+        "Name": "Horizon Analytics - Growth Plan",
+        "AccountId": "0018Z00003GROWTHQ",
+        "StageName": "Closed Won",
+        "Amount": 50000.00,
+        "CloseDate": "2024-02-15",
+        "OwnerId": "0058Z000001OWNER",
+        "ContractId": "8008Z000000GROWTH",
+        "IsClosed": True,
+        "IsWon": True,
+        "Probability": 100,
+        "Type": "New Business",
+        "attributes": {
+            "type": "Opportunity",
+            "url": "/services/data/v59.0/sobjects/Opportunity/0068Z000001OPPGROWTH"
+        }
+    },
+    "OPP-ENTERPRISE-009": {
+        "Id": "0068Z000001OPPENTP",
+        "Name": "Atlas Global - Enterprise Deal",
+        "AccountId": "0018Z00003ENTPRQ",
+        "StageName": "Closed Won",
+        "Amount": 250000.00,
+        "CloseDate": "2024-01-30",
+        "OwnerId": "0058Z000001OWNER",
+        "ContractId": "8008Z000000ENTPR",
+        "IsClosed": True,
+        "IsWon": True,
+        "Probability": 100,
+        "Type": "New Business",
+        "attributes": {
+            "type": "Opportunity",
+            "url": "/services/data/v59.0/sobjects/Opportunity/0068Z000001OPPENTP"
+        }
+    },
 }
 
 MOCK_CONTRACTS = {
@@ -380,6 +487,52 @@ MOCK_CONTRACTS = {
         "attributes": {
             "type": "Contract",
             "url": "/services/data/v59.0/sobjects/Contract/8008Z000000PARTL"
+        }
+    },
+    # --- Additional PROCEED scenarios ---
+    "8008Z000000START": {
+        "Id": "8008Z000000START",
+        "ContractNumber": "00000128",
+        "AccountId": "0018Z00003STARTQ",
+        "OwnerId": "0058Z000001OWNER",
+        "Status": "Activated",
+        "StartDate": "2024-03-01",
+        "EndDate": "2025-02-28",
+        "ActivatedDate": "2024-03-01T10:00:00.000+0000",
+        "ContractTerm": 12,
+        "attributes": {
+            "type": "Contract",
+            "url": "/services/data/v59.0/sobjects/Contract/8008Z000000START"
+        }
+    },
+    "8008Z000000GROWTH": {
+        "Id": "8008Z000000GROWTH",
+        "ContractNumber": "00000129",
+        "AccountId": "0018Z00003GROWTHQ",
+        "OwnerId": "0058Z000001OWNER",
+        "Status": "Activated",
+        "StartDate": "2024-02-15",
+        "EndDate": "2025-02-14",
+        "ActivatedDate": "2024-02-15T10:00:00.000+0000",
+        "ContractTerm": 12,
+        "attributes": {
+            "type": "Contract",
+            "url": "/services/data/v59.0/sobjects/Contract/8008Z000000GROWTH"
+        }
+    },
+    "8008Z000000ENTPR": {
+        "Id": "8008Z000000ENTPR",
+        "ContractNumber": "00000130",
+        "AccountId": "0018Z00003ENTPRQ",
+        "OwnerId": "0058Z000001OWNER",
+        "Status": "Activated",
+        "StartDate": "2024-01-30",
+        "EndDate": "2025-01-29",
+        "ActivatedDate": "2024-01-30T10:00:00.000+0000",
+        "ContractTerm": 12,
+        "attributes": {
+            "type": "Contract",
+            "url": "/services/data/v59.0/sobjects/Contract/8008Z000000ENTPR"
         }
     },
 }

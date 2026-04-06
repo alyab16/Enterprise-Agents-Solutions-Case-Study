@@ -441,6 +441,103 @@ def reset_all():
     _ONBOARDING_TASKS.clear()
 
 
+def simulate_onboarding_progress(account_id: str, profile: str) -> None:
+    """
+    Simulate time passage and realistic risk conditions for a provisioned account.
+    Called after provisioning to create varied risk states for demonstration.
+
+    Profiles:
+    - "no_login": 5 days ago, customer never logged in
+    - "stalled": 10 days ago, kickoff not done, <30% completion
+    - "blocked_sso": 8 days ago, kickoff done but SSO stuck, customer tasks overdue
+    """
+    if account_id not in _PROVISIONED_ACCOUNTS:
+        return
+
+    tasks = _ONBOARDING_TASKS.get(account_id, [])
+    if not tasks:
+        return
+
+    now = datetime.utcnow()
+
+    if profile == "no_login":
+        # Backdate provisioning to 5 days ago
+        _PROVISIONED_ACCOUNTS[account_id]["provisioned_at"] = (
+            (now - timedelta(days=5)).isoformat()
+        )
+        # Adjust due dates to be relative to 5 days ago
+        base = now - timedelta(days=5)
+        for task in tasks:
+            if task.due_date:
+                offset_days = int(task.due_date.split("-")[-1]) if task.due_date else 0
+                # Recalculate due dates from backdated provisioning
+                pass
+        # Customer login task is still pending — triggers "not logged in" risk
+        # (T009 is already pending by default, just need the time gap)
+
+    elif profile == "stalled":
+        # Backdate provisioning to 10 days ago
+        _PROVISIONED_ACCOUNTS[account_id]["provisioned_at"] = (
+            (now - timedelta(days=10)).isoformat()
+        )
+        # Kickoff NOT scheduled — T005 still pending (overdue since day 1)
+        # Everything after kickoff is stuck
+        for task in tasks:
+            if task.due_date:
+                # Make due dates relative to 10 days ago
+                original_offset = 0
+                for t_def in [
+                    ("T005", 1), ("T006", 3), ("T007", 7), ("T008", 10),
+                    ("T009", 2), ("T010", 5), ("T011", 7), ("T012", 14),
+                    ("T013", 30), ("T014", 45),
+                ]:
+                    if task.task_id.endswith(t_def[0]):
+                        original_offset = t_def[1]
+                        break
+                if original_offset:
+                    task.due_date = (now - timedelta(days=10) + timedelta(days=original_offset)).strftime("%Y-%m-%d")
+
+    elif profile == "blocked_sso":
+        # Backdate provisioning to 8 days ago
+        base = now - timedelta(days=8)
+        _PROVISIONED_ACCOUNTS[account_id]["provisioned_at"] = base.isoformat()
+
+        for task in tasks:
+            # Recalculate due dates from 8 days ago
+            for t_def in [
+                ("T005", 1), ("T006", 3), ("T007", 7), ("T008", 10),
+                ("T009", 2), ("T010", 5), ("T011", 7), ("T012", 14),
+                ("T013", 30), ("T014", 45),
+            ]:
+                if task.task_id.endswith(t_def[0]):
+                    task.due_date = (base + timedelta(days=t_def[1])).strftime("%Y-%m-%d")
+                    break
+
+        # Simulate: kickoff was scheduled and done
+        for task in tasks:
+            if task.task_id.endswith("T005"):
+                task.status = TaskStatus.COMPLETED
+                task.completed_at = (base + timedelta(days=1)).isoformat()
+                task.completed_by = "cs_team"
+            elif task.task_id.endswith("T006"):
+                task.status = TaskStatus.COMPLETED
+                task.completed_at = (base + timedelta(days=3)).isoformat()
+                task.completed_by = "cs_team"
+            # SSO still pending (overdue — due day 7, now day 8)
+            elif task.task_id.endswith("T007"):
+                task.status = TaskStatus.BLOCKED
+                task.notes = "Waiting on customer IT team for IdP metadata"
+            # Customer logged in but tour not done (overdue)
+            elif task.task_id.endswith("T009"):
+                task.status = TaskStatus.COMPLETED
+                task.completed_at = (base + timedelta(days=2)).isoformat()
+                task.completed_by = "customer"
+            elif task.task_id.endswith("T010"):
+                pass  # Still pending, overdue (due day 5, now day 8)
+            elif task.task_id.endswith("T011"):
+                pass  # Still pending, overdue (due day 7, now day 8)
+
+
 # ============================================================================
 # MONITORING & CS ASSISTANT FUNCTIONS
 # ============================================================================
@@ -670,3 +767,161 @@ def get_all_active_onboardings() -> List[dict]:
             "blocked_count": progress.get("task_breakdown", {}).get("blocked", 0),
         })
     return results
+
+
+# ---------------------------------------------------------------------------
+# Proactive Alerts & Portfolio (Enhancements 1-3)
+# ---------------------------------------------------------------------------
+
+def get_all_alerts() -> List[dict]:
+    """
+    Scan ALL provisioned accounts and aggregate risks into a single
+    alert list, sorted by severity (critical > high > medium > low).
+    """
+    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    all_alerts: List[dict] = []
+
+    for account_id in list(_PROVISIONED_ACCOUNTS.keys()):
+        risks = identify_onboarding_risks(account_id)
+        for risk in risks.get("risks", []):
+            alert = dict(risk)
+            alert["account_id"] = account_id
+            all_alerts.append(alert)
+
+    all_alerts.sort(key=lambda a: severity_order.get(a.get("severity", "low"), 4))
+    return all_alerts
+
+
+def get_portfolio_summary() -> dict:
+    """
+    Aggregate portfolio-level stats across ALL provisioned accounts.
+    Returns health distribution, account list, and top priority actions.
+    """
+    health_dist: Dict[str, int] = {
+        "on_track": 0, "at_risk": 0, "stalled": 0,
+    }
+    accounts: List[dict] = []
+
+    for account_id, prov in _PROVISIONED_ACCOUNTS.items():
+        progress = check_onboarding_progress(account_id)
+        health = progress.get("health_status", "unknown")
+        if health in health_dist:
+            health_dist[health] += 1
+
+        accounts.append({
+            "account_id": account_id,
+            "decision": "PROCEED",
+            "tier": prov.get("tier"),
+            "health_status": health,
+            "completion_percentage": progress.get("completion_percentage", 0),
+            "days_since_provisioning": progress.get("days_since_provisioning", 0),
+            "overdue_count": len(progress.get("overdue_tasks", [])),
+            "blocked_count": progress.get("task_breakdown", {}).get("blocked", 0),
+        })
+
+    # Top 5 priority actions from alerts
+    priority_actions = get_all_alerts()[:5]
+
+    return {
+        "total_accounts": len(accounts),
+        "health_distribution": health_dist,
+        "accounts": accounts,
+        "priority_actions": priority_actions,
+    }
+
+
+def generate_suggested_actions(account_id: str) -> List[dict]:
+    """
+    Map identified risks for an account to concrete executable actions.
+    Each action has a type, description, and the params needed to execute it.
+    """
+    risks = identify_onboarding_risks(account_id)
+    actions: List[dict] = []
+    action_counter = 0
+
+    for risk in risks.get("risks", []):
+        risk_text = risk.get("risk", "")
+        task_id = risk.get("task_id", "")
+        severity = risk.get("severity", "medium")
+        action_counter += 1
+        action_id = f"act-{account_id}-{action_counter}"
+
+        if "not logged in" in risk_text.lower():
+            actions.append({
+                "action_id": action_id,
+                "action_type": "send_login_reminder",
+                "description": f"Send login reminder to {account_id} customer",
+                "account_id": account_id,
+                "icon": "📧",
+                "severity": severity,
+                "task_id": task_id or f"{account_id}-T009",
+                "params": {
+                    "recipient": "customer",
+                    "message": "Please log in to your new account to continue onboarding setup.",
+                },
+            })
+        elif "overdue" in risk_text.lower() and "customer" in risk_text.lower():
+            actions.append({
+                "action_id": action_id,
+                "action_type": "send_task_reminder",
+                "description": f"Send reminder for overdue task to {account_id}",
+                "account_id": account_id,
+                "icon": "⏰",
+                "severity": severity,
+                "task_id": task_id,
+                "params": {
+                    "recipient": "customer",
+                    "message": f"Reminder: Your onboarding task is overdue. Please complete it to proceed.",
+                },
+            })
+        elif "stalling" in risk_text.lower():
+            actions.append({
+                "action_id": action_id,
+                "action_type": "escalate",
+                "description": f"Escalate {account_id} — onboarding stalled",
+                "account_id": account_id,
+                "icon": "🚨",
+                "severity": severity,
+                "task_id": "",
+                "params": {
+                    "reason": "Onboarding stalled — proactive escalation by risk detection",
+                },
+            })
+        elif "blocked" in risk_text.lower():
+            actions.append({
+                "action_id": action_id,
+                "action_type": "escalate_blocked",
+                "description": f"Escalate blocked task for {account_id}",
+                "account_id": account_id,
+                "icon": "🚧",
+                "severity": severity,
+                "task_id": task_id,
+                "params": {
+                    "reason": f"Task {task_id} is blocked — needs investigation",
+                },
+            })
+        elif "sso" in risk_text.lower():
+            actions.append({
+                "action_id": action_id,
+                "action_type": "schedule_sso_followup",
+                "description": f"Start SSO follow-up for {account_id}",
+                "account_id": account_id,
+                "icon": "🔐",
+                "severity": severity,
+                "task_id": task_id or f"{account_id}-T007",
+                "params": {},
+            })
+
+    return actions
+
+
+def get_all_suggested_actions() -> List[dict]:
+    """Get suggested actions across all provisioned accounts, sorted by severity."""
+    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    all_actions: List[dict] = []
+
+    for account_id in list(_PROVISIONED_ACCOUNTS.keys()):
+        all_actions.extend(generate_suggested_actions(account_id))
+
+    all_actions.sort(key=lambda a: severity_order.get(a.get("severity", "low"), 4))
+    return all_actions

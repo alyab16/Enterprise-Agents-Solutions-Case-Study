@@ -937,6 +937,102 @@ async def check_financial_alignment(
 
 
 # ---------------------------------------------------------------------------
+# Portfolio & Multi-Account Tools
+# ---------------------------------------------------------------------------
+
+@onboarding_agent.tool
+async def get_portfolio_overview(
+    ctx: RunContext[OnboardingDeps],
+) -> dict:
+    """
+    Get a portfolio-level summary across ALL active onboardings.
+
+    Returns health distribution (on_track/at_risk/stalled counts),
+    total accounts, completion stats, and per-account summaries.
+    Use for questions like "show me all accounts" or "daily summary".
+    """
+    from app.integrations import provisioning
+
+    log_event("tool.portfolio.summary", correlation_id=ctx.deps.correlation_id)
+    return provisioning.get_portfolio_summary()
+
+
+@onboarding_agent.tool
+async def get_all_alerts(
+    ctx: RunContext[OnboardingDeps],
+) -> dict:
+    """
+    Get aggregated risk alerts across ALL provisioned accounts.
+
+    Returns a list of alerts sorted by severity. Each alert has:
+    account_id, severity, risk description, detail, and recommendation.
+    Use for questions like "what needs attention?" or "any at-risk accounts?"
+    """
+    from app.integrations import provisioning
+
+    log_event("tool.portfolio.alerts", correlation_id=ctx.deps.correlation_id)
+    alerts = provisioning.get_all_alerts()
+    return {"alert_count": len(alerts), "alerts": alerts}
+
+
+@onboarding_agent.tool
+async def batch_send_reminders(
+    ctx: RunContext[OnboardingDeps],
+    filter_type: str = "overdue",
+) -> dict:
+    """
+    Send reminders to all accounts matching a filter criteria.
+
+    Args:
+        filter_type: One of "overdue" (all overdue tasks), "login" (not logged in),
+                     "stalled" (escalate stalled onboardings). Defaults to "overdue".
+
+    Returns summary of reminders sent.
+    """
+    from app.integrations import provisioning
+
+    log_event("tool.portfolio.batch_reminders", filter_type=filter_type,
+              correlation_id=ctx.deps.correlation_id)
+
+    results = []
+    for account_id in list(provisioning._PROVISIONED_ACCOUNTS.keys()):
+        if filter_type == "overdue":
+            overdue = provisioning.get_overdue_tasks(account_id)
+            for task in overdue:
+                r = provisioning.send_task_reminder(
+                    account_id, task["task_id"],
+                    message=f"Reminder: {task['name']} is overdue (due {task.get('due_date', 'N/A')})",
+                )
+                results.append(r)
+        elif filter_type == "login":
+            tasks = provisioning._ONBOARDING_TASKS.get(account_id, [])
+            login_task = next(
+                (t for t in tasks if "Verify Login" in t.name and t.status.value == "pending"),
+                None,
+            )
+            if login_task:
+                r = provisioning.send_task_reminder(
+                    account_id, login_task.task_id,
+                    recipient="customer",
+                    message="Please log in to your new account to continue onboarding.",
+                )
+                results.append(r)
+        elif filter_type == "stalled":
+            progress = provisioning.check_onboarding_progress(account_id)
+            if progress.get("health_status") == "stalled":
+                r = provisioning.escalate_stalled_onboarding(
+                    account_id, reason="Batch escalation — onboarding stalled",
+                )
+                results.append(r)
+
+    return {
+        "filter": filter_type,
+        "actions_taken": len(results),
+        "results": results,
+    }
+
+
+# ---------------------------------------------------------------------------
 # CS Assistant Agent (free-form text for chat interactions)
 # ---------------------------------------------------------------------------
 
@@ -955,6 +1051,9 @@ You can:
 - **Escalate** — flag stalled onboardings to CS management
 - **Run new onboardings** — fetch data, validate, and process new accounts
 - **Check financials** — verify deal/invoice alignment
+- **Portfolio overview** — see health across ALL accounts at once
+- **Aggregated alerts** — get risks across all accounts sorted by severity
+- **Batch actions** — send reminders to all overdue accounts at once
 
 ## INTERACTION STYLE
 
@@ -963,6 +1062,8 @@ You can:
 - Proactively suggest next steps based on what you find
 - If you detect risks, recommend specific actions
 - Use the account_id the user provides (e.g., "ACME-001")
+- For portfolio-level questions, use get_portfolio_overview or get_all_alerts
+  (no specific account_id needed)
 
 ## EXAMPLES
 
@@ -977,6 +1078,19 @@ User: "Send a reminder about the login task"
 
 User: "Onboard BETA-002"
 → Run the full onboarding workflow (fetch → validate → decide → act)
+
+User: "Show me all at-risk accounts"
+→ Use get_portfolio_overview, filter for at_risk health_status
+
+User: "What's my most urgent account?"
+→ Use get_all_alerts, the first alert (highest severity) identifies it
+
+User: "Send reminders to all customers with overdue tasks"
+→ Use batch_send_reminders with filter_type="overdue"
+
+User: "Give me a daily summary"
+→ Use get_portfolio_overview for health overview, then get_all_alerts for
+   action items. Present: total accounts, health breakdown, top 3 urgent items.
 """
 
 cs_assistant_agent = Agent(

@@ -86,6 +86,8 @@ if "chat_session_id" not in st.session_state:
     st.session_state.chat_session_id = str(uuid.uuid4())[:8]
 if "pending_prompt" not in st.session_state:
     st.session_state.pending_prompt = None
+if "dismissed_actions" not in st.session_state:
+    st.session_state.dismissed_actions = set()
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +96,7 @@ if "pending_prompt" not in st.session_state:
 
 page = st.sidebar.radio(
     "Navigation",
-    ["Dashboard", "Run Onboarding", "Chat with Agent"],
+    ["Dashboard", "Portfolio Overview", "Run Onboarding", "Chat with Agent"],
     index=0,
 )
 
@@ -120,7 +122,111 @@ if page == "Dashboard":
     with col_reset:
         if st.button("Reset All", use_container_width=True):
             api_post("/reset")
+            st.session_state.dismissed_actions = set()
             st.rerun()
+
+    # --- Proactive Alerts Panel (grouped by account) ---
+    alerts_data = api_get("/alerts")
+    if alerts_data and alerts_data.get("alert_count", 0) > 0:
+        # Group alerts by account
+        from collections import OrderedDict
+        alerts_by_account: dict[str, list] = OrderedDict()
+        for alert in alerts_data["alerts"]:
+            aid = alert["account_id"]
+            alerts_by_account.setdefault(aid, []).append(alert)
+
+        account_count = len(alerts_by_account)
+        st.subheader(f"Alerts & Actions Needed ({account_count} accounts)")
+        for aid, account_alerts in alerts_by_account.items():
+            # Highest severity for this account
+            top_sev = account_alerts[0].get("severity", "low")
+            sev_icon = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"}.get(top_sev, "⚪")
+            with st.expander(f"{sev_icon} **{aid}** — {len(account_alerts)} alert(s)"):
+                for alert in account_alerts:
+                    item_sev = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"}.get(
+                        alert.get("severity", ""), "⚪"
+                    )
+                    st.markdown(
+                        f"{item_sev} **{alert['risk']}**  \n"
+                        f"{alert['detail']}  \n"
+                        f"*Recommended:* {alert['recommendation']}"
+                    )
+                    st.markdown("")
+        st.markdown("---")
+
+    # --- Smart Suggested Actions ---
+    actions_data = api_get("/suggested-actions")
+    if actions_data and actions_data.get("action_count", 0) > 0:
+        visible_actions = [
+            a for a in actions_data["actions"]
+            if a.get("action_id") not in st.session_state.dismissed_actions
+        ]
+        if visible_actions:
+            st.subheader(f"Suggested Actions ({len(visible_actions)})")
+            for action in visible_actions:
+                action_type = action.get("action_type", "")
+                # Build detailed explanation based on action type
+                if action_type == "send_login_reminder":
+                    detail = (
+                        f"The customer for **{action['account_id']}** has not logged in since provisioning. "
+                        f"Approving will send a reminder email asking them to log in and start onboarding."
+                    )
+                elif action_type == "send_task_reminder":
+                    detail = (
+                        f"An onboarding task for **{action['account_id']}** is overdue. "
+                        f"Approving will send a reminder to the task owner to complete it."
+                    )
+                elif action_type == "escalate":
+                    detail = (
+                        f"The onboarding for **{action['account_id']}** has stalled with low completion. "
+                        f"Approving will escalate to CS management via #cs-onboarding-escalations."
+                    )
+                elif action_type == "escalate_blocked":
+                    detail = (
+                        f"A task for **{action['account_id']}** is blocked and preventing progress. "
+                        f"Approving will escalate to CS management for investigation."
+                    )
+                elif action_type == "schedule_sso_followup":
+                    detail = (
+                        f"SSO integration for **{action['account_id']}** has not been configured after kickoff. "
+                        f"Approving will mark the SSO task as in-progress and flag for follow-up with customer IT."
+                    )
+                elif action_type == "rerun_onboarding":
+                    detail = (
+                        f"The onboarding for **{action['account_id']}** was previously blocked. "
+                        f"Approving will re-run the full onboarding process to check if issues are resolved."
+                    )
+                elif action_type == "review_escalation":
+                    detail = (
+                        f"The onboarding for **{action['account_id']}** was escalated due to warnings. "
+                        f"Approving will mark it as reviewed. Use Chat to discuss resolution steps."
+                    )
+                else:
+                    detail = action['description']
+
+                with st.container():
+                    st.markdown(
+                        f"{action.get('icon', '📋')} **{action['account_id']}**: "
+                        f"{action['description']}"
+                    )
+                    st.caption(detail)
+                    col_approve, col_dismiss, col_spacer = st.columns([1, 1, 6])
+                    with col_approve:
+                        if st.button("Approve", key=f"approve_{action['action_id']}", type="primary"):
+                            api_post("/execute-action", json={
+                                "action_type": action["action_type"],
+                                "account_id": action["account_id"],
+                                "task_id": action.get("task_id", ""),
+                                "params": action.get("params", {}),
+                            })
+                            st.toast(f"Action executed for {action['account_id']}")
+                            st.rerun()
+                    with col_dismiss:
+                        if st.button("Dismiss", key=f"dismiss_{action['action_id']}"):
+                            st.session_state.dismissed_actions.add(action["action_id"])
+                            st.rerun()
+                    st.markdown("")
+            st.markdown("---")
 
     data = api_get("/active-onboardings")
     if data and data.get("onboardings"):
@@ -192,7 +298,8 @@ if page == "Dashboard":
                         if violations:
                             st.markdown("**Violations:**")
                             for domain, msgs in violations.items():
-                                for msg in msgs:
+                                msg_list = msgs if isinstance(msgs, list) else [msgs]
+                                for msg in msg_list:
                                     st.error(f"**{domain}**: {msg}")
                         st.markdown(f"Violation count: {o.get('violation_count', 0)}")
 
@@ -204,7 +311,8 @@ if page == "Dashboard":
                         if warnings:
                             st.markdown("**Warnings:**")
                             for domain, msgs in warnings.items():
-                                for msg in msgs:
+                                msg_list = msgs if isinstance(msgs, list) else [msgs]
+                                for msg in msg_list:
                                     st.warning(f"**{domain}**: {msg}")
                         st.markdown(f"Warning count: {o.get('warning_count', 0)}")
 
@@ -216,7 +324,73 @@ if page == "Dashboard":
 
 
 # ============================================================================
-# PAGE 2: RUN ONBOARDING
+# PAGE 2: PORTFOLIO OVERVIEW
+# ============================================================================
+
+elif page == "Portfolio Overview":
+    st.title("Portfolio Overview")
+
+    data = api_get("/portfolio-summary")
+    if not data or not data.get("accounts"):
+        st.info(
+            "No accounts in portfolio yet. Use the **Run Onboarding** page "
+            "to process scenarios, then return here."
+        )
+    else:
+        # Row 1: Health distribution metrics
+        dist = data.get("health_distribution", {})
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("On Track", dist.get("on_track", 0))
+        c2.metric("At Risk", dist.get("at_risk", 0))
+        c3.metric("Stalled", dist.get("stalled", 0))
+        c4.metric("Blocked", dist.get("blocked", 0))
+        c5.metric("Escalated", dist.get("escalated", 0))
+
+        st.markdown("---")
+
+        # Row 2: Priority Action Queue
+        priority = data.get("priority_actions", [])
+        if priority:
+            st.subheader("Priority Actions Today")
+            for i, action in enumerate(priority[:5], 1):
+                sev_icon = {"critical": "🔴", "high": "🟠", "medium": "🟡"}.get(
+                    action.get("severity", ""), "⚪"
+                )
+                st.markdown(
+                    f"{i}. {sev_icon} **{action['account_id']}**: "
+                    f"{action.get('recommendation', action.get('risk', ''))}"
+                )
+            st.markdown("---")
+
+        # Row 3: Account summary table
+        st.subheader(f"All Accounts ({data['total_accounts']})")
+        import pandas as pd
+
+        accounts = data["accounts"]
+        df = pd.DataFrame(accounts)
+        display_cols = [
+            "account_id", "decision", "health_status", "completion_percentage",
+            "days_since_provisioning", "overdue_count", "tier",
+        ]
+        available_cols = [c for c in display_cols if c in df.columns]
+        if available_cols:
+            st.dataframe(
+                df[available_cols].rename(columns={
+                    "account_id": "Account",
+                    "decision": "Decision",
+                    "health_status": "Health",
+                    "completion_percentage": "Completion %",
+                    "days_since_provisioning": "Days",
+                    "overdue_count": "Overdue",
+                    "tier": "Tier",
+                }),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+
+# ============================================================================
+# PAGE 3: RUN ONBOARDING
 # ============================================================================
 
 elif page == "Run Onboarding":
@@ -259,7 +433,8 @@ elif page == "Run Onboarding":
                 violations = result.get("violations", {})
                 if violations:
                     for domain, msgs in violations.items():
-                        for msg in msgs:
+                        msg_list = msgs if isinstance(msgs, list) else [msgs]
+                        for msg in msg_list:
                             st.error(f"**{domain}**: {msg}")
                 else:
                     st.success("No violations")
@@ -268,7 +443,8 @@ elif page == "Run Onboarding":
                 warnings = result.get("warnings", {})
                 if warnings:
                     for domain, msgs in warnings.items():
-                        for msg in msgs:
+                        msg_list = msgs if isinstance(msgs, list) else [msgs]
+                        for msg in msg_list:
                             st.warning(f"**{domain}**: {msg}")
                 else:
                     st.success("No warnings")
@@ -282,11 +458,39 @@ elif page == "Run Onboarding":
                     st.info("No actions taken")
 
             with tab_p:
-                prov = result.get("provisioning")
-                if prov:
-                    st.json(prov)
+                if decision == "PROCEED":
+                    # Fetch live provisioning progress (simulation may have updated state)
+                    progress = api_get(f"/progress/{scenario['id']}")
+                    if progress and progress.get("status") != "error":
+                        pc1, pc2, pc3 = st.columns(3)
+                        pc1.metric("Completion", f"{progress.get('completion_percentage', 0)}%")
+                        pc2.metric("Health", progress.get("health_status", "N/A").replace("_", " ").title())
+                        pc3.metric("Day", progress.get("days_since_provisioning", 0))
+
+                        tb = progress.get("task_breakdown", {})
+                        tc1, tc2, tc3, tc4 = st.columns(4)
+                        tc1.metric("Completed", tb.get("completed", 0))
+                        tc2.metric("In Progress", tb.get("in_progress", 0))
+                        tc3.metric("Pending", tb.get("pending", 0))
+                        tc4.metric("Blocked", tb.get("blocked", 0))
+
+                        if progress.get("overdue_tasks"):
+                            st.markdown("**Overdue Tasks:**")
+                            for t in progress["overdue_tasks"]:
+                                st.warning(f"`{t['task_id']}` {t['name']} — owner: {t['owner']}, due: {t.get('due_date', 'N/A')}")
+
+                        if progress.get("next_actions"):
+                            st.markdown("**Next Actions:**")
+                            for a in progress["next_actions"]:
+                                st.markdown(f"- `{a['task_id']}` {a['name']} (owner: {a['owner']})")
+                    else:
+                        prov = result.get("provisioning")
+                        if prov:
+                            st.json(prov)
+                        else:
+                            st.info("Provisioning completed — details not available")
                 else:
-                    st.info("Not provisioned")
+                    st.info("Not provisioned — decision was " + decision)
 
             # Raw result
             with st.expander("Raw API Response"):
@@ -295,7 +499,7 @@ elif page == "Run Onboarding":
     # Run All button
     st.markdown("---")
     if st.button("Run All Scenarios"):
-        with st.spinner("Running all 7 scenarios (this may take a few minutes)..."):
+        with st.spinner("Running all 10 scenarios (this may take a few minutes)..."):
             result = api_post("/run-all", timeout=600)
 
         if result:
@@ -315,15 +519,19 @@ elif page == "Run Onboarding":
 
 
 # ============================================================================
-# PAGE 3: CHAT WITH AGENT
+# PAGE 4: CHAT WITH AGENT
 # ============================================================================
 
 elif page == "Chat with Agent":
     st.title("CS Assistant Chat")
     st.caption("Ask about onboarding status, risks, or request actions.")
 
-    # Account context
-    account_id = st.sidebar.text_input("Account Context", value="ACME-001")
+    # Account context — dropdown from known scenarios
+    _scenario_ids = [
+        "ACME-001", "BETA-002", "GAMMA-003", "DELETED-004", "MISSING-999",
+        "FOREX-005", "PARTIAL-006", "STARTER-007", "GROWTH-008", "ENTERPRISE-009",
+    ]
+    account_id = st.sidebar.selectbox("Account Context", _scenario_ids, index=0)
 
     # Display chat history
     for msg in st.session_state.messages:
@@ -414,6 +622,18 @@ elif page == "Chat with Agent":
             st.rerun()
         else:
             st.sidebar.warning(f"No run result for {account_id}. Run the scenario first.")
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("**Portfolio Actions**")
+    if st.sidebar.button("Portfolio Summary"):
+        st.session_state.pending_prompt = "Give me a daily summary of all my accounts."
+        st.rerun()
+    if st.sidebar.button("All Alerts"):
+        st.session_state.pending_prompt = "What are all the current alerts across my portfolio?"
+        st.rerun()
+    if st.sidebar.button("Send All Reminders"):
+        st.session_state.pending_prompt = "Send reminders to all customers with overdue tasks."
+        st.rerun()
+    st.sidebar.markdown("---")
     if st.sidebar.button("Clear Chat"):
         st.session_state.messages = []
         st.session_state.pending_prompt = None

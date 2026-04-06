@@ -65,6 +65,27 @@ ALL_SCENARIOS = [
         "expected_decision": "ESCALATE",
         "category": "normal",
     },
+    {
+        "id": "STARTER-007",
+        "name": "Proceed - Customer Not Logged In",
+        "description": "All checks pass, provisioned 5 days ago, but customer has not logged in yet.",
+        "expected_decision": "PROCEED",
+        "category": "normal",
+    },
+    {
+        "id": "GROWTH-008",
+        "name": "Proceed - Stalled Onboarding",
+        "description": "All checks pass, provisioned 10 days ago, kickoff not done, <30% completion.",
+        "expected_decision": "PROCEED",
+        "category": "normal",
+    },
+    {
+        "id": "ENTERPRISE-009",
+        "name": "Proceed - SSO & Blocked Tasks",
+        "description": "All checks pass, provisioned 8 days ago, SSO not configured, customer tasks overdue.",
+        "expected_decision": "PROCEED",
+        "category": "normal",
+    },
 ]
 
 
@@ -73,9 +94,24 @@ ERROR_SIMULATION_IDS = {"AUTH-ERROR", "PERM-ERROR", "SERVER-ERROR", "RATE-ERROR"
 # In-memory store for ALL onboarding run results (not just provisioned ones)
 _ALL_RUN_RESULTS: dict[str, dict] = {}
 
+# Map account IDs to post-provisioning simulation profiles
+_SIMULATION_PROFILES = {
+    "STARTER-007": "no_login",
+    "GROWTH-008": "stalled",
+    "ENTERPRISE-009": "blocked_sso",
+}
+
 
 def is_error_simulation_scenario(account_id: str) -> bool:
     return account_id in ERROR_SIMULATION_IDS or account_id.endswith("-ERROR")
+
+
+def _apply_simulation(account_id: str):
+    """Apply post-provisioning simulation if this account has a risk profile."""
+    profile = _SIMULATION_PROFILES.get(account_id)
+    if profile:
+        from app.integrations.provisioning import simulate_onboarding_progress
+        simulate_onboarding_progress(account_id, profile)
 
 
 @router.get("/scenarios")
@@ -93,6 +129,9 @@ async def run_demo_scenario(account_id: str, generate_report: bool = False):
         account_id=account_id,
         event_type="demo.trigger",
     )
+
+    # Apply post-provisioning simulation for risk demonstration
+    _apply_simulation(account_id)
 
     notifications = get_sent_notifications(account_id)
 
@@ -141,6 +180,9 @@ async def run_all_scenarios(generate_reports: bool = False):
             account_id=account_id,
             event_type="demo.batch",
         )
+
+        # Apply post-provisioning simulation for risk demonstration
+        _apply_simulation(account_id)
 
         scenario_result = {
             "account_id": account_id,
@@ -595,14 +637,198 @@ async def list_active_onboardings():
                 "days_since_provisioning": 0,
                 "overdue_count": 0,
                 "blocked_count": 0,
-                "violation_count": sum(len(v) for v in violations.values()),
-                "warning_count": sum(len(v) for v in warnings.values()),
+                "violation_count": sum(len(v) if isinstance(v, list) else 1 for v in violations.values()),
+                "warning_count": sum(len(v) if isinstance(v, list) else 1 for v in warnings.values()),
                 "violations": violations,
                 "warnings": warnings,
                 "summary": run.get("summary", ""),
             })
 
     return {"onboardings": results}
+
+
+# ============================================================================
+# PROACTIVE ALERTS, PORTFOLIO & SUGGESTED ACTIONS
+# ============================================================================
+
+@router.get("/alerts")
+async def get_alerts():
+    """Get aggregated risk alerts across all accounts (provisioned + blocked/escalated)."""
+    from app.integrations import provisioning
+
+    # Alerts from provisioned accounts (task-level risks)
+    alerts = provisioning.get_all_alerts()
+
+    # Alerts from blocked/escalated accounts (decision-level issues)
+    for account_id, run in _ALL_RUN_RESULTS.items():
+        decision = run.get("decision", "UNKNOWN")
+        if decision == "BLOCK":
+            violations = run.get("violations", {})
+            for domain, msgs in violations.items():
+                msg_list = msgs if isinstance(msgs, list) else [msgs]
+                for msg in msg_list:
+                    alerts.append({
+                        "severity": "critical",
+                        "account_id": account_id,
+                        "risk": f"Onboarding blocked — {domain} violation",
+                        "detail": str(msg),
+                        "recommendation": f"Resolve the {domain} issue and re-run onboarding for {account_id}",
+                    })
+        elif decision == "ESCALATE" and not provisioning.is_provisioned(account_id):
+            warnings = run.get("warnings", {})
+            for domain, msgs in warnings.items():
+                msg_list = msgs if isinstance(msgs, list) else [msgs]
+                for msg in msg_list:
+                    alerts.append({
+                        "severity": "high",
+                        "account_id": account_id,
+                        "risk": f"Onboarding escalated — {domain} warning",
+                        "detail": str(msg),
+                        "recommendation": f"Review the {domain} issue and approve or resolve for {account_id}",
+                    })
+
+    # Re-sort by severity
+    sev_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    alerts.sort(key=lambda a: sev_order.get(a.get("severity", "low"), 4))
+    return {"alert_count": len(alerts), "alerts": alerts}
+
+
+@router.get("/portfolio-summary")
+async def get_portfolio_summary():
+    """Get aggregated portfolio stats + priority actions."""
+    from app.integrations import provisioning
+
+    summary = provisioning.get_portfolio_summary()
+
+    # Also include blocked/escalated accounts from _ALL_RUN_RESULTS
+    for account_id, run in _ALL_RUN_RESULTS.items():
+        decision = run.get("decision", "UNKNOWN")
+        if decision in ("BLOCK", "ESCALATE") and not provisioning.is_provisioned(account_id):
+            summary["accounts"].append({
+                "account_id": account_id,
+                "decision": decision,
+                "health_status": "blocked" if decision == "BLOCK" else "escalated",
+                "completion_percentage": 0,
+                "days_since_provisioning": 0,
+                "overdue_count": 0,
+                "blocked_count": 0,
+                "tier": None,
+                "scenario_name": run.get("scenario_name", ""),
+            })
+            summary["health_distribution"][decision.lower()] = (
+                summary["health_distribution"].get(decision.lower(), 0) + 1
+            )
+
+    summary["total_accounts"] = len(summary["accounts"])
+    return summary
+
+
+@router.get("/suggested-actions")
+async def get_suggested_actions():
+    """Get actionable suggestions derived from risks across all accounts."""
+    from app.integrations import provisioning
+
+    # Actions from provisioned accounts (task-level)
+    actions = provisioning.get_all_suggested_actions()
+
+    # Actions from blocked/escalated accounts (decision-level)
+    action_counter = 0
+    for account_id, run in _ALL_RUN_RESULTS.items():
+        decision = run.get("decision", "UNKNOWN")
+        if decision == "BLOCK":
+            action_counter += 1
+            violations = run.get("violations", {})
+            top_domain = next(iter(violations), "unknown")
+            actions.append({
+                "action_id": f"act-block-{account_id}",
+                "action_type": "rerun_onboarding",
+                "description": f"Fix {top_domain} issues and re-run onboarding for {account_id}",
+                "account_id": account_id,
+                "icon": "🔄",
+                "severity": "critical",
+                "task_id": "",
+                "params": {},
+            })
+        elif decision == "ESCALATE" and not provisioning.is_provisioned(account_id):
+            action_counter += 1
+            actions.append({
+                "action_id": f"act-esc-{account_id}",
+                "action_type": "review_escalation",
+                "description": f"Review escalated warnings and approve onboarding for {account_id}",
+                "account_id": account_id,
+                "icon": "👀",
+                "severity": "high",
+                "task_id": "",
+                "params": {},
+            })
+
+    # Re-sort by severity
+    sev_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    actions.sort(key=lambda a: sev_order.get(a.get("severity", "low"), 4))
+    return {"action_count": len(actions), "actions": actions}
+
+
+class ExecuteActionRequest(BaseModel):
+    action_type: str
+    account_id: str
+    task_id: str = ""
+    params: dict = {}
+
+
+@router.post("/execute-action")
+async def execute_action(req: ExecuteActionRequest):
+    """Execute a suggested action by type."""
+    from app.integrations import provisioning
+
+    if req.action_type == "send_login_reminder":
+        task_id = req.task_id or f"{req.account_id}-T009"
+        return provisioning.send_task_reminder(
+            req.account_id, task_id,
+            recipient="customer",
+            message=req.params.get("message", "Please log in to complete setup."),
+        )
+    elif req.action_type == "send_task_reminder":
+        return provisioning.send_task_reminder(
+            req.account_id, req.task_id,
+            recipient=req.params.get("recipient", ""),
+            message=req.params.get("message", ""),
+        )
+    elif req.action_type in ("escalate", "escalate_blocked"):
+        return provisioning.escalate_stalled_onboarding(
+            req.account_id,
+            reason=req.params.get("reason", "Suggested by proactive risk detection"),
+        )
+    elif req.action_type == "schedule_sso_followup":
+        task_id = req.task_id or f"{req.account_id}-T007"
+        return provisioning.update_task_status(
+            req.account_id, task_id, "in_progress",
+            completed_by="cs_manager",
+            notes="SSO follow-up initiated via suggested action",
+        )
+    elif req.action_type == "rerun_onboarding":
+        # Re-run the onboarding for a previously blocked account
+        result = await run_onboarding_async(
+            account_id=req.account_id,
+            event_type="demo.rerun",
+        )
+        _apply_simulation(req.account_id)
+        _ALL_RUN_RESULTS[req.account_id] = {
+            "account_id": req.account_id,
+            "decision": result.get("decision"),
+            "violations": result.get("violations"),
+            "warnings": result.get("warnings"),
+            "provisioning": result.get("provisioning"),
+            "summary": result.get("human_summary"),
+        }
+        return {"status": "rerun_complete", "decision": result.get("decision"), "account_id": req.account_id}
+    elif req.action_type == "review_escalation":
+        return {
+            "status": "acknowledged",
+            "account_id": req.account_id,
+            "message": f"Escalation for {req.account_id} marked as reviewed. Use the Chat to discuss resolution steps.",
+        }
+    else:
+        return {"error": f"Unknown action type: {req.action_type}"}
 
 
 class ChatRequest(BaseModel):
