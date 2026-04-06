@@ -24,11 +24,11 @@ This agent automates the customer journey from **Sales → Contract → Invoice 
 - **Report Generation**: HTML emails, Markdown reports, JSON audit logs
 - **Dual Observability**: Pydantic Logfire + LangSmith tracing (both opt-in), structured JSON logging, audit trails
 
-## 🎥 Video Demo Walkthrough
+<!-- ## 🎥 Video Demo Walkthrough
 
 Watch the full solution walkthrough here:
 
-👉 **[View Demo Video](https://drive.google.com/file/d/1-ztLnzh89_dahqyzBxzX045lJkn83hNs/view?usp=sharing)**
+👉 **[View Demo Video](https://drive.google.com/file/d/1-ztLnzh89_dahqyzBxzX045lJkn83hNs/view?usp=sharing)** -->
 
 
 ## 🏗️ Architecture
