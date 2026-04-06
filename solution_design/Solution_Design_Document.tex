@@ -92,7 +92,7 @@ The solution implements an \textbf{AI-powered automation agent} that orchestrate
 \vspace{0.2em}
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth,height=14.5cm,keepaspectratio]{01_architecture.png}
+\includegraphics[width=\textwidth,height=20.5cm]{01_architecture.png}
 \caption{Architecture: triggers, Pydantic AI agent orchestration with 24 tools, cross-system data chaining, FastMCP servers, and external system integrations.}
 \end{figure}
 
@@ -234,20 +234,18 @@ Batch & Scheduler & \texttt{POST /demo/run-all} \\
 \end{minipage}
 
 \vspace{0.2em}
-\begin{minipage}[t]{0.54\textwidth}
-\vspace{0pt}
 \begin{figure}[H]
     \centering
-    \includegraphics[width=\textwidth,height=10cm,keepaspectratio]{04_state_machine.png}
+    \includegraphics[width=\textwidth,height=11cm,keepaspectratio]{04_state_machine.png}
     \caption{Agent workflow: full lifecycle from webhook ingestion through tool calling, validation, decision routing, post-provisioning monitoring, and portfolio management.}
 \end{figure}
-\end{minipage}
-\hfill
-\begin{minipage}[t]{0.44\textwidth}
-\vspace{0pt}
+
 %==============================================================================
 % SECTION C.5: API ERROR HANDLING
 %==============================================================================
+\vspace{-0.2em}
+\begin{minipage}[t]{0.48\textwidth}
+\vspace{0pt}
 \subsection{API Error Classification \& Handling}
 {\scriptsize
 Each integration returns structured error payloads with \texttt{error\_type}, \texttt{error\_code}, \texttt{http\_status}, \texttt{message}, \texttt{resolution}, and \texttt{owner}:
@@ -268,10 +266,12 @@ Server Error & 500 & Check status page, retry later (Support Team) \\
 \bottomrule
 \end{tabularx}
 \end{table}
-
-\vspace{0.15em}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.48\textwidth}
+\vspace{0pt}
+\subsection{Error Handling Features}
 {\scriptsize
-\textbf{Error Handling Features:}
 \begin{itemize}[leftmargin=1.2em]
 \item \textbf{In-place Error Simulator}: \texttt{ERROR\_SIMULATOR} object modified in-place when enabled; all modules reference the same instance
 \item \textbf{Comprehensive Catching}: Each integration catches specific error types AND generic \texttt{APIError} as fallback
