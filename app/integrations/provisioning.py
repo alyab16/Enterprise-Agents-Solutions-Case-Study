@@ -443,6 +443,8 @@ def reset_all():
     """Reset all provisioned accounts (for testing)."""
     _PROVISIONED_ACCOUNTS.clear()
     _ONBOARDING_TASKS.clear()
+    from app.integrations import sentiment as _sentiment
+    _sentiment.reset_all()
 
 
 def simulate_onboarding_progress(account_id: str, profile: str) -> None:
@@ -577,10 +579,18 @@ def check_onboarding_progress(account_id: str) -> dict:
 
     overdue = get_overdue_tasks(account_id)
 
-    # Health assessment
+    # Sentiment signal — feeds into health assessment
+    from app.integrations import sentiment as _sentiment
+    sentiment_data = _sentiment.get_sentiment_score(account_id)
+    sentiment_score = sentiment_data.get("score", 0.0)
+    sentiment_label = sentiment_data.get("label", "neutral")
+    sentiment_trend = _sentiment.get_sentiment_trend(account_id).get("trend", "stable")
+
+    # Health assessment (tasks + sentiment)
     if blocked > 0 or len(overdue) >= 3:
         health = "stalled"
-    elif len(overdue) > 0 or (pct < 30 and days_since > 7):
+    elif (len(overdue) > 0 or (pct < 30 and days_since > 7)
+          or sentiment_label == "negative"):
         health = "at_risk"
     else:
         health = "on_track"
@@ -592,6 +602,11 @@ def check_onboarding_progress(account_id: str) -> dict:
         "days_since_provisioning": days_since,
         "completion_percentage": pct,
         "health_status": health,
+        "sentiment": {
+            "score": sentiment_score,
+            "label": sentiment_label,
+            "trend": sentiment_trend,
+        },
         "task_breakdown": {
             "total": total,
             "completed": completed,
@@ -688,6 +703,32 @@ def identify_onboarding_risks(account_id: str) -> dict:
             "recommendation": "Send task reminder to customer contact",
         })
 
+    # Risk: negative customer sentiment (predictive signal)
+    from app.integrations import sentiment as _sentiment
+    sent = _sentiment.get_sentiment_score(account_id)
+    trend = _sentiment.get_sentiment_trend(account_id)
+    if sent.get("label") == "negative":
+        severity = "high" if trend.get("trend") == "declining" else "medium"
+        risks.append({
+            "severity": severity,
+            "risk": "Negative customer sentiment detected",
+            "detail": (
+                f"Sentiment score {sent['score']} ({sent['label']}) across "
+                f"{sent['interaction_count']} interaction(s), trend: {trend.get('trend', 'unknown')}"
+            ),
+            "recommendation": "Proactive outreach — schedule a call to address customer concerns",
+        })
+    elif trend.get("trend") == "declining" and sent.get("interaction_count", 0) >= 2:
+        risks.append({
+            "severity": "medium",
+            "risk": "Customer sentiment declining",
+            "detail": (
+                f"Sentiment trending downward (delta {trend['delta']}), "
+                f"current score {sent['score']}"
+            ),
+            "recommendation": "Monitor closely and consider proactive check-in",
+        })
+
     return {
         "account_id": account_id,
         "risk_count": len(risks),
@@ -704,8 +745,11 @@ def send_task_reminder(
     """
     Send a reminder about a pending onboarding task.
 
-    In production this would send an email/Slack message. For the mock,
-    it records the reminder as a note on the task.
+    In production this would send an email/Slack message. For the demo,
+    it records the reminder AND simulates the recipient acting on it:
+    - Login reminders (T009) → customer logs in (task completed)
+    - Other customer tasks → customer starts working (task → in_progress)
+    - CS tasks → CS team picks it up (task → in_progress)
     """
     tasks = _ONBOARDING_TASKS.get(account_id, [])
     task = next((t for t in tasks if t.task_id == task_id), None)
@@ -719,6 +763,23 @@ def send_task_reminder(
     )
     task.notes = (task.notes + " | " + reminder_note) if task.notes else reminder_note
 
+    # Simulate the recipient acting on the reminder
+    action_taken = None
+    if task.status in (TaskStatus.PENDING, TaskStatus.IN_PROGRESS):
+        if "Verify Login" in task.name or "login" in message.lower():
+            # Login reminders → customer logs in
+            task.status = TaskStatus.COMPLETED
+            task.completed_at = datetime.utcnow().isoformat()
+            task.completed_by = "customer"
+            action_taken = "Customer logged in after reminder — task completed"
+        elif task.status == TaskStatus.PENDING:
+            task.status = TaskStatus.IN_PROGRESS
+            action_taken = f"Task moved to in_progress after reminder to {recipient or task.owner}"
+
+    # Refresh stored summary
+    if account_id in _PROVISIONED_ACCOUNTS:
+        _PROVISIONED_ACCOUNTS[account_id]["onboarding_tasks"] = _get_task_summary(tasks)
+
     return {
         "status": "SENT",
         "task_id": task_id,
@@ -726,6 +787,7 @@ def send_task_reminder(
         "recipient": recipient or task.owner,
         "message": message or f"Reminder: {task.name} is {task.status.value} (due {task.due_date})",
         "channel": "email" if "@" in (recipient or "") else "slack",
+        "action_taken": action_taken,
     }
 
 
@@ -734,16 +796,33 @@ def escalate_stalled_onboarding(account_id: str, reason: str = "") -> dict:
     Escalate a stalled onboarding to CS management.
 
     Posts to #cs-onboarding-escalations with progress details.
+    Also unblocks any blocked tasks (simulates management resolving blockers).
     """
     progress = check_onboarding_progress(account_id)
     if progress.get("status") == "NOT_PROVISIONED":
         return {"status": "NOT_PROVISIONED", "account_id": account_id}
+
+    # Simulate management resolving blocked tasks
+    tasks = _ONBOARDING_TASKS.get(account_id, [])
+    unblocked = []
+    for task in tasks:
+        if task.status == TaskStatus.BLOCKED:
+            task.status = TaskStatus.IN_PROGRESS
+            task.notes = (task.notes + " | " if task.notes else "") + (
+                f"Unblocked by CS management escalation at {datetime.utcnow().isoformat()}"
+            )
+            unblocked.append(task.task_id)
+
+    # Refresh stored summary
+    if account_id in _PROVISIONED_ACCOUNTS:
+        _PROVISIONED_ACCOUNTS[account_id]["onboarding_tasks"] = _get_task_summary(tasks)
 
     return {
         "status": "ESCALATED",
         "account_id": account_id,
         "channel": "#cs-onboarding-escalations",
         "reason": reason or "Onboarding stalled — needs management attention",
+        "unblocked_tasks": unblocked,
         "progress_snapshot": {
             "completion": progress["completion_percentage"],
             "health": progress["health_status"],
@@ -917,6 +996,19 @@ def generate_suggested_actions(account_id: str) -> List[dict]:
                 "severity": severity,
                 "task_id": task_id or f"{account_id}-T007",
                 "params": {},
+            })
+        elif "sentiment" in risk_text.lower():
+            actions.append({
+                "action_id": action_id,
+                "action_type": "schedule_sentiment_call",
+                "description": f"Schedule check-in call for {account_id} — negative sentiment",
+                "account_id": account_id,
+                "icon": "📞",
+                "severity": severity,
+                "task_id": "",
+                "params": {
+                    "reason": "Proactive outreach triggered by negative customer sentiment",
+                },
             })
 
     return actions

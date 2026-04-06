@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from app.agent import run_onboarding_async
 from app.notifications import get_sent_notifications, clear_notifications
 from app.integrations.provisioning import reset_all as reset_provisioning
+from app.integrations.resolution import reset_resolution_state, simulate_issue_resolution
 from app.integrations.api_errors import enable_error_simulation, disable_error_simulation
 from app.reports import generate_full_run_report, REPORTS_DIR
 import os
@@ -169,6 +170,7 @@ async def run_all_scenarios(generate_reports: bool = False):
     """Run ALL demo scenarios and return results."""
     clear_notifications()
     reset_provisioning()
+    reset_resolution_state()
 
     results = []
     generated_reports = []
@@ -318,6 +320,7 @@ async def reset_demo():
     """Reset demo state."""
     clear_notifications()
     reset_provisioning()
+    reset_resolution_state()
     disable_error_simulation()
     _ALL_RUN_RESULTS.clear()
     _CHAT_SESSIONS.clear()
@@ -621,6 +624,7 @@ async def list_active_onboardings():
                 "days_since_provisioning": progress.get("days_since_provisioning", 0),
                 "overdue_count": len(progress.get("overdue_tasks", [])),
                 "blocked_count": progress.get("task_breakdown", {}).get("blocked", 0),
+                "sentiment": progress.get("sentiment", {}),
                 "summary": run.get("summary", ""),
             })
         else:
@@ -645,6 +649,20 @@ async def list_active_onboardings():
             })
 
     return {"onboardings": results}
+
+
+# ============================================================================
+# SENTIMENT ANALYSIS
+# ============================================================================
+
+@router.get("/sentiment/{account_id}")
+async def get_sentiment(account_id: str):
+    """Get customer sentiment score, trend, and interaction details."""
+    from app.integrations import sentiment
+
+    score = sentiment.get_sentiment_score(account_id)
+    trend = sentiment.get_sentiment_trend(account_id)
+    return {**score, "trend": trend.get("trend", "stable"), "trend_detail": trend}
 
 
 # ============================================================================
@@ -775,7 +793,7 @@ async def get_suggested_actions():
             raw_actions.append({
                 "action_id": f"act-block-{account_id}",
                 "action_type": "rerun_onboarding",
-                "description": f"Fix {top_domain} issues and re-run onboarding for {account_id}",
+                "description": f"Simulate {top_domain} issue resolution and re-run onboarding for {account_id}",
                 "account_id": account_id,
                 "icon": "🔄",
                 "severity": "critical",
@@ -786,7 +804,7 @@ async def get_suggested_actions():
             raw_actions.append({
                 "action_id": f"act-esc-{account_id}",
                 "action_type": "review_escalation",
-                "description": f"Review escalated warnings and approve onboarding for {account_id}",
+                "description": f"Simulate warning resolution and re-run onboarding for {account_id}",
                 "account_id": account_id,
                 "icon": "👀",
                 "severity": "high",
@@ -857,7 +875,7 @@ async def execute_action(req: ExecuteActionRequest):
             notes="SSO follow-up initiated via suggested action",
         )
     elif req.action_type == "rerun_onboarding":
-        # Re-run the onboarding for a previously blocked account
+        resolution = simulate_issue_resolution(req.account_id)
         result = await run_onboarding_async(
             account_id=req.account_id,
             event_type="demo.rerun",
@@ -871,12 +889,52 @@ async def execute_action(req: ExecuteActionRequest):
             "provisioning": result.get("provisioning"),
             "summary": result.get("human_summary"),
         }
-        return {"status": "rerun_complete", "decision": result.get("decision"), "account_id": req.account_id}
-    elif req.action_type == "review_escalation":
         return {
-            "status": "acknowledged",
+            "status": "rerun_complete",
+            "decision": result.get("decision"),
             "account_id": req.account_id,
-            "message": f"Escalation for {req.account_id} marked as reviewed. Use the Chat to discuss resolution steps.",
+            "resolution": resolution,
+            "provisioning": result.get("provisioning"),
+        }
+    elif req.action_type == "schedule_sentiment_call":
+        from app.integrations import sentiment
+        # Simulate the call happening and customer responding positively
+        sentiment.add_interaction(
+            req.account_id, "call", "outbound", "cs_team",
+            "Proactive check-in call to discuss onboarding experience and address concerns.",
+        )
+        sentiment.add_interaction(
+            req.account_id, "call", "inbound", "customer",
+            "Thank you for reaching out. We appreciate the follow-up. "
+            "The issues have been noted and we are happy to continue.",
+        )
+        return {
+            "status": "scheduled",
+            "account_id": req.account_id,
+            "message": f"Check-in call completed for {req.account_id}. Customer responded positively — sentiment improved.",
+        }
+    elif req.action_type == "review_escalation":
+        resolution = simulate_issue_resolution(req.account_id)
+        result = await run_onboarding_async(
+            account_id=req.account_id,
+            event_type="demo.review_escalation",
+        )
+        _apply_simulation(req.account_id)
+        _ALL_RUN_RESULTS[req.account_id] = {
+            "account_id": req.account_id,
+            "decision": result.get("decision"),
+            "violations": result.get("violations"),
+            "warnings": result.get("warnings"),
+            "provisioning": result.get("provisioning"),
+            "summary": result.get("human_summary"),
+        }
+        return {
+            "status": "review_complete",
+            "account_id": req.account_id,
+            "decision": result.get("decision"),
+            "resolution": resolution,
+            "provisioning": result.get("provisioning"),
+            "message": f"Warnings were simulated as resolved and onboarding was re-run for {req.account_id}.",
         }
     else:
         return {"error": f"Unknown action type: {req.action_type}"}

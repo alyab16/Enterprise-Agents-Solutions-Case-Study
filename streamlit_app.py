@@ -199,6 +199,10 @@ if page == "Dashboard":
                         detail_lines.append(
                             "Onboarding was escalated due to warnings — mark as reviewed."
                         )
+                    elif action_type == "schedule_sentiment_call":
+                        detail_lines.append(
+                            "Customer sentiment is negative — schedule a proactive check-in call."
+                        )
                     else:
                         detail_lines.append(sub["description"])
 
@@ -269,10 +273,17 @@ if page == "Dashboard":
                         f"{o['completion_percentage']}% complete  |  "
                         f"{o.get('tier', '')}  |  Day {o['days_since_provisioning']}"
                     ):
-                        pc1, pc2, pc3 = st.columns(3)
+                        pc1, pc2, pc3, pc4 = st.columns(4)
                         pc1.metric("Completion", f"{o['completion_percentage']}%")
                         pc2.metric("Overdue Tasks", o["overdue_count"])
                         pc3.metric("Blocked Tasks", o["blocked_count"])
+                        # Sentiment indicator
+                        sent = o.get("sentiment", {})
+                        sent_label = sent.get("label", "neutral")
+                        sent_icon = {"positive": "😊", "neutral": "😐", "negative": "😟"}.get(sent_label, "😐")
+                        sent_trend = sent.get("trend", "stable")
+                        trend_arrow = {"improving": " ↑", "declining": " ↓", "stable": ""}.get(sent_trend, "")
+                        pc4.metric("Sentiment", f"{sent_icon} {sent_label.title()}{trend_arrow}")
 
                         if o.get("summary"):
                             st.markdown(f"**Summary:** {o['summary']}")

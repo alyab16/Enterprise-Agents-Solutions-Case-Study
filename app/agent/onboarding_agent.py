@@ -799,6 +799,24 @@ async def update_onboarding_task(
     )
 
 
+@onboarding_agent.tool
+async def simulate_issue_resolution(
+    ctx: RunContext[OnboardingDeps],
+    account_id: str,
+) -> dict:
+    """
+    Simulate CS resolving blockers or warnings in the source systems.
+
+    Use this before re-running onboarding when a blocked or escalated account
+    needs to move forward in the demo environment.
+    """
+    from app.integrations import resolution
+
+    log_event("tool.resolution.simulate", account_id=account_id,
+              correlation_id=ctx.deps.correlation_id)
+    return resolution.simulate_issue_resolution(account_id)
+
+
 # ---------------------------------------------------------------------------
 # Financial alignment tools
 # ---------------------------------------------------------------------------
@@ -937,6 +955,159 @@ async def check_financial_alignment(
 
 
 # ---------------------------------------------------------------------------
+# Product Assistance Tools
+# ---------------------------------------------------------------------------
+
+@onboarding_agent.tool
+async def lookup_product_info(
+    ctx: RunContext[OnboardingDeps],
+    account_id: str = "",
+    tier: str = "",
+) -> dict:
+    """
+    Look up product features, SLA details, implementation prerequisites,
+    and tier configuration for an account or tier.
+
+    If account_id is provided, fetches the account's CLM contract data
+    (key_terms, SLA tier, support hours, payment terms) and combines it
+    with the tier's product configuration (features, limits, storage).
+
+    If only tier is provided (Enterprise, Growth, or Starter), returns
+    the tier configuration and general implementation prerequisites.
+
+    Use this to answer CS or customer questions about:
+    - What features are included in their plan
+    - SLA details (support hours, data retention)
+    - Contractual terms (payment terms, auto-renewal, renewal notice)
+    - Implementation prerequisites per tier
+    - User limits, storage, API rate limits
+    """
+    from app.integrations import clm
+    from app.integrations.provisioning import MOCK_PROVISIONING_CONFIG
+
+    log_event("tool.product.lookup", account_id=account_id or "N/A",
+              tier=tier or "N/A", correlation_id=ctx.deps.correlation_id)
+
+    result: dict = {}
+
+    # Fetch CLM contract data if account_id is provided
+    clm_data = None
+    if account_id:
+        clm_data = clm.get_contract(account_id)
+        if clm_data and clm_data.get("status") != "NOT_FOUND":
+            key_terms = clm_data.get("key_terms", {})
+            tier = tier or key_terms.get("sla_tier", "Starter")
+            result["contract"] = {
+                "name": clm_data.get("name"),
+                "status": clm_data.get("status"),
+                "effective_date": clm_data.get("effective_date"),
+                "expiry_date": clm_data.get("expiry_date"),
+            }
+            result["sla_details"] = {
+                "tier": key_terms.get("sla_tier", "N/A"),
+                "support_hours": key_terms.get("support_hours", "N/A"),
+                "data_retention_days": key_terms.get("data_retention_days", "N/A"),
+                "payment_terms": key_terms.get("payment_terms", "N/A"),
+                "auto_renewal": key_terms.get("auto_renewal", False),
+                "renewal_notice_days": key_terms.get("renewal_notice_days", "N/A"),
+            }
+
+    # Tier configuration
+    tier = tier or "Starter"
+    tier_config = MOCK_PROVISIONING_CONFIG.get(tier, MOCK_PROVISIONING_CONFIG["Starter"])
+    result["tier"] = tier
+    result["tier_config"] = {
+        "max_users": tier_config["max_users"],
+        "features": tier_config["features"],
+        "storage_gb": tier_config["storage_gb"],
+        "api_rate_limit": tier_config["api_rate_limit"],
+    }
+
+    # Implementation prerequisites per tier
+    prereqs = [
+        "Account owner must be active in Salesforce",
+        "Opportunity must be in 'Closed Won' stage",
+        "CLM contract must be SIGNED or EXECUTED",
+        "Invoice must not be VOIDED or CANCELLED",
+    ]
+    if tier == "Enterprise":
+        prereqs.extend([
+            "SSO/IdP metadata from customer IT team (for SSO configuration)",
+            "Custom report requirements document from customer",
+            "Dedicated support contact designated",
+        ])
+    elif tier == "Growth":
+        prereqs.append("Custom report requirements document from customer")
+
+    result["implementation_prerequisites"] = prereqs
+
+    # Onboarding checklist overview
+    result["onboarding_checklist"] = {
+        "total_tasks": 14,
+        "automated_tasks": 4,
+        "cs_team_tasks": "5-6 depending on tier (SSO is Enterprise-only)",
+        "customer_tasks": 4,
+        "milestone_tasks": 2,
+        "estimated_duration_days": 45,
+    }
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Sentiment Analysis Tools
+# ---------------------------------------------------------------------------
+
+@onboarding_agent.tool
+async def get_customer_sentiment(
+    ctx: RunContext[OnboardingDeps],
+    account_id: str,
+) -> dict:
+    """
+    Get the customer sentiment score and summary for an account.
+
+    Analyses inbound customer interactions (emails, chat, support tickets)
+    and returns a score (-1.0 to 1.0), label (positive/neutral/negative),
+    and trend (improving/stable/declining). Negative sentiment is a
+    predictive signal that onboarding may be at risk even before tasks stall.
+    """
+    from app.integrations import sentiment
+
+    log_event("tool.sentiment.score", account_id=account_id,
+              correlation_id=ctx.deps.correlation_id)
+
+    score = sentiment.get_sentiment_score(account_id)
+    trend = sentiment.get_sentiment_trend(account_id)
+    return {**score, "trend": trend.get("trend", "stable"), "trend_detail": trend}
+
+
+@onboarding_agent.tool
+async def log_customer_interaction(
+    ctx: RunContext[OnboardingDeps],
+    account_id: str,
+    channel: str,
+    direction: str,
+    author: str,
+    text: str,
+) -> dict:
+    """
+    Record a customer interaction for sentiment tracking.
+
+    Args:
+        account_id: The account this interaction belongs to.
+        channel: Communication channel (email, chat, support_ticket, call).
+        direction: "inbound" (from customer) or "outbound" (from CS team).
+        author: Who sent it — "customer" or "cs_team".
+        text: The interaction content.
+    """
+    from app.integrations import sentiment
+
+    log_event("tool.sentiment.log_interaction", account_id=account_id,
+              channel=channel, correlation_id=ctx.deps.correlation_id)
+    return sentiment.add_interaction(account_id, channel, direction, author, text)
+
+
+# ---------------------------------------------------------------------------
 # Portfolio & Multi-Account Tools
 # ---------------------------------------------------------------------------
 
@@ -1049,11 +1220,21 @@ You can:
 - **Send reminders** — nudge customers or CS team about pending tasks
 - **Update tasks** — mark tasks as completed, blocked, or in progress
 - **Escalate** — flag stalled onboardings to CS management
+- **Resolve blockers** — simulate that source-system violations/warnings were fixed, then re-run onboarding
 - **Run new onboardings** — fetch data, validate, and process new accounts
 - **Check financials** — verify deal/invoice alignment
 - **Portfolio overview** — see health across ALL accounts at once
 - **Aggregated alerts** — get risks across all accounts sorted by severity
 - **Batch actions** — send reminders to all overdue accounts at once
+- **Customer sentiment** — analyse customer interaction tone and satisfaction
+  via `get_customer_sentiment`. Returns score, label, and trend. Use
+  proactively when reviewing account health to catch dissatisfaction early.
+- **Log interactions** — record emails, chat messages, or support tickets
+  via `log_customer_interaction` for ongoing sentiment tracking
+- **Product assistance** — answer questions about product features, SLA
+  details, implementation prerequisites, and contractual terms using CLM
+  and account data. Use `fetch_clm_contract` to look up key_terms (sla_tier,
+  payment_terms, support_hours, data_retention_days) and contract details.
 
 ## INTERACTION STYLE
 
@@ -1079,6 +1260,9 @@ User: "Send a reminder about the login task"
 User: "Onboard BETA-002"
 → Run the full onboarding workflow (fetch → validate → decide → act)
 
+User: "Resolve the blockers on BETA-002 and try again"
+→ Use simulate_issue_resolution, then run the onboarding workflow again
+
 User: "Show me all at-risk accounts"
 → Use get_portfolio_overview, filter for at_risk health_status
 
@@ -1091,6 +1275,18 @@ User: "Send reminders to all customers with overdue tasks"
 User: "Give me a daily summary"
 → Use get_portfolio_overview for health overview, then get_all_alerts for
    action items. Present: total accounts, health breakdown, top 3 urgent items.
+
+User: "How does the customer feel about their onboarding?"
+→ Use get_customer_sentiment for the account. Report score, label, trend,
+   and summarize recent interactions. If negative, recommend proactive outreach.
+
+User: "What tier is ACME-001 on? What's their SLA?"
+→ Use fetch_clm_contract to look up key_terms (sla_tier, support_hours, etc.)
+   and present the product/contractual details.
+
+User: "What are the implementation prerequisites for Enterprise tier?"
+→ Explain SSO configuration, custom reports setup, and the 14-task onboarding
+   checklist based on the Enterprise tier configuration.
 """
 
 cs_assistant_agent = Agent(
