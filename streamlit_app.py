@@ -376,6 +376,44 @@ elif page == "Chat with Agent":
     if st.sidebar.button("Identify Risks"):
         st.session_state.pending_prompt = f"Are there any risks with {account_id}'s onboarding?"
         st.rerun()
+    if st.sidebar.button("Discuss Decision"):
+        # Fetch the run result for this account and build a contextual prompt
+        run_data = api_get("/active-onboardings")
+        account_run = None
+        if run_data and run_data.get("onboardings"):
+            account_run = next(
+                (o for o in run_data["onboardings"] if o["account_id"] == account_id),
+                None,
+            )
+        if account_run:
+            decision = account_run.get("decision", "UNKNOWN")
+            issues = []
+            for domain, msgs in account_run.get("violations", {}).items():
+                for msg in msgs:
+                    issues.append(f"- [Violation] {domain}: {msg}")
+            for domain, msgs in account_run.get("warnings", {}).items():
+                for msg in msgs:
+                    issues.append(f"- [Warning] {domain}: {msg}")
+            summary = account_run.get("summary", "")
+
+            if issues:
+                issue_text = "\n".join(issues)
+                st.session_state.pending_prompt = (
+                    f"The onboarding for {account_id} was decided as {decision}. "
+                    f"Here are the issues found:\n{issue_text}\n\n"
+                    f"For each issue, explain why it matters, what the root cause likely is, "
+                    f"who should fix it, and what specific steps they should take to resolve it "
+                    f"so the onboarding can proceed."
+                )
+            else:
+                st.session_state.pending_prompt = (
+                    f"The onboarding for {account_id} was decided as {decision}. "
+                    f"Summary: {summary}. "
+                    f"Explain what this decision means and what the next steps are."
+                )
+            st.rerun()
+        else:
+            st.sidebar.warning(f"No run result for {account_id}. Run the scenario first.")
     if st.sidebar.button("Clear Chat"):
         st.session_state.messages = []
         st.session_state.pending_prompt = None

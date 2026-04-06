@@ -102,15 +102,29 @@ system, and a business rule validation engine. Use them as follows:
 2. **VALIDATE** — Once data is gathered:
    a) Call `validate_business_rules` with NO arguments. It automatically
       uses the data collected by the fetch tools. Returns violations
-      (blocking) and warnings (non-blocking).
+      (blocking), warnings (non-blocking), and a `decision_guidance` field
+      that tells you BLOCK, ESCALATE, or PROCEED.
    b) Call `check_financial_alignment` with NO arguments. It compares the
       opportunity deal value against the invoice total (converting currencies
       if needed) and checks for underpayment gaps. Uses a 2% threshold.
+      Its warnings are added to the warning count (non-blocking).
 
-3. **DECIDE** — Based on the results:
-   - **BLOCK** if there are ANY api_errors OR ANY violations
-   - **ESCALATE** if there are warnings but no violations/errors
-   - **PROCEED** if everything is clean (no errors, violations, or warnings)
+3. **DECIDE** — Follow the `decision_guidance` from `validate_business_rules`.
+   The tool computes the correct decision based on its rules. You MUST
+   follow it unless there are also api_errors from fetch tools.
+
+   - If `decision_guidance` says BLOCK → your decision is **BLOCK**
+   - If `decision_guidance` says ESCALATE → your decision is **ESCALATE**
+     (even if check_financial_alignment adds more warnings, it stays ESCALATE)
+   - If `decision_guidance` says PROCEED but check_financial_alignment's
+     `decision_guidance` says ESCALATE → upgrade to **ESCALATE**
+   - If both `decision_guidance` fields say PROCEED → **PROCEED**
+   - If ANY fetch tool returned an api_error status → override to **BLOCK**
+
+   CRITICAL: Do NOT reclassify warnings as violations. The tool's
+   `has_violations` and `has_warnings` fields are authoritative.
+   An overdue invoice is a WARNING. A missing BillingCountry is a WARNING.
+   A missing ContractId is a WARNING. Trust the tool output.
 
 4. **ACT** based on your decision:
 
@@ -134,9 +148,10 @@ system, and a business rule validation engine. Use them as follows:
 
 ## DECISION RULES
 
-These are strict business rules — not suggestions:
+These rules are enforced by `validate_business_rules`. Do NOT override them.
+Use the tool's "violations" and "warnings" output as-is for your decision.
 
-**Violations (BLOCK):**
+**Items that appear as VIOLATIONS (→ BLOCK):**
 - Account missing, deleted, or has no Id/Name
 - Opportunity not in "Closed Won" stage
 - CLM contract not SIGNED or EXECUTED (DRAFT, SENT, EXPIRED, VOIDED block)
@@ -144,12 +159,17 @@ These are strict business rules — not suggestions:
 - Account owner inactive or missing required fields (Id, Email, Username)
 - Any API integration error from any system
 
-**Warnings (ESCALATE):**
+**Items that appear as WARNINGS (→ ESCALATE, NOT block):**
 - Missing BillingCountry, Industry on account
 - Invoice OVERDUE, OPEN, PENDING, or DRAFT status
 - Missing opportunity Amount, CloseDate, or ContractId
 - CLM contract has pending signatories
 - Missing user Name, Title, Department
+- Financial alignment gaps from check_financial_alignment
+
+An overdue invoice is a WARNING, not a violation. A missing BillingCountry
+is a WARNING, not a violation. A missing ContractId on a Closed Won
+opportunity is a WARNING, not a violation. Trust the tool output.
 
 ## OUTPUT FORMAT
 
@@ -267,11 +287,15 @@ async def fetch_salesforce_contract(
 
     account_id = ctx.deps.account_id
 
+    result = None
+
     if contract_id:
         log_event("tool.salesforce.get_contract", contract_id=contract_id,
                   correlation_id=ctx.deps.correlation_id)
         result = salesforce.get_contract(contract_id)
-    else:
+
+    # Fall back to account-based lookup if chain missed
+    if result is None:
         log_event("tool.salesforce.get_contract", account_id=account_id,
                   correlation_id=ctx.deps.correlation_id)
         result = salesforce.get_contract_by_account(account_id)
@@ -304,12 +328,16 @@ async def fetch_clm_contract(
 
     account_id = ctx.deps.account_id
 
+    result = None
+
     if salesforce_contract_id:
         log_event("tool.clm.get_contract_by_sf_id",
                   salesforce_contract_id=salesforce_contract_id,
                   correlation_id=ctx.deps.correlation_id)
         result = clm.get_contract_by_sf_contract_id(salesforce_contract_id)
-    else:
+
+    # Fall back to account-based lookup if chain missed or returned NOT_FOUND
+    if not result or result.get("status") == "NOT_FOUND":
         log_event("tool.clm.get_contract", account_id=account_id,
                   correlation_id=ctx.deps.correlation_id)
         result = clm.get_contract(account_id)
@@ -340,12 +368,16 @@ async def fetch_netsuite_invoice(
 
     account_id = ctx.deps.account_id
 
+    result = None
+
     if clm_contract_ref:
         log_event("tool.netsuite.get_invoice_by_clm_ref",
                   clm_contract_ref=clm_contract_ref,
                   correlation_id=ctx.deps.correlation_id)
         result = netsuite.get_invoice_by_clm_ref(clm_contract_ref)
-    else:
+
+    # Fall back to account-based lookup if chain missed or returned NOT_FOUND
+    if not result or result.get("status") == "NOT_FOUND":
         log_event("tool.netsuite.get_invoice", account_id=account_id,
                   correlation_id=ctx.deps.correlation_id)
         result = netsuite.get_invoice(account_id)
@@ -408,9 +440,24 @@ async def validate_business_rules(
     check_contract_invariants(state)
     check_invoice_invariants(state)
 
+    violations = state.get("violations", {})
+    warnings = state.get("warnings", {})
+    has_violations = any(violations.values())
+    has_warnings = any(warnings.values())
+
+    if has_violations:
+        decision_guidance = "BLOCK — violations found (these are blocking issues)"
+    elif has_warnings:
+        decision_guidance = "ESCALATE — warnings found but NO violations (non-blocking, needs review)"
+    else:
+        decision_guidance = "PROCEED — no violations and no warnings"
+
     return {
-        "violations": state.get("violations", {}),
-        "warnings": state.get("warnings", {}),
+        "violations": violations,
+        "warnings": warnings,
+        "decision_guidance": decision_guidance,
+        "has_violations": has_violations,
+        "has_warnings": has_warnings,
     }
 
 
@@ -871,10 +918,21 @@ async def check_financial_alignment(
         correlation_id=ctx.deps.correlation_id,
     )
 
+    has_warnings = len(warnings) > 0
+    if has_warnings:
+        decision_guidance = (
+            "ESCALATE — financial alignment warnings found "
+            "(these are non-blocking but require CS/Finance review)"
+        )
+    else:
+        decision_guidance = "PROCEED — financials aligned, no issues detected"
+
     return {
         "status": "OK",
         "warnings": warnings,
         "details": details,
+        "decision_guidance": decision_guidance,
+        "has_warnings": has_warnings,
     }
 
 
