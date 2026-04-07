@@ -14,7 +14,8 @@ This agent automates the customer journey from **Sales → Contract → Invoice 
 - **MCP-Style Extensibility**: Every tool is mirrored as a FastMCP server definition for future extraction to standalone services
 - **Multi-System Integration**: Salesforce, CLM, NetSuite, currency conversion (live API), and SaaS provisioning
 - **Post-Provisioning Monitoring**: Onboarding progress tracking, risk detection, task reminders, escalation tools, and portfolio-wide alerts
-- **Proactive Alerts & Suggested Actions**: Automated risk surfacing with one-click approve/dismiss actions across all accounts
+- **Proactive Alerts & Suggested Actions**: Automated risk surfacing with one-click actions that mutate onboarding/provisioning state, simulate CS remediation, and re-run blocked or escalated accounts
+- **Closed-Loop CS Resolution**: The CS assistant can simulate that warnings/violations were resolved in source systems, then re-run onboarding to convert `BLOCK`/`ESCALATE` into `PROCEED`
 - **Portfolio Management**: Aggregated health view across all accounts with priority actions and batch operations
 - **Live Currency Conversion**: Historical and latest USD/CAD exchange rates via Frankfurter API (ECB data) for financial alignment checks
 - **Financial Alignment Detection**: Automated comparison of opportunity deal values vs invoice totals across currencies (2% threshold)
@@ -482,6 +483,8 @@ uvicorn main:app --reload
 
 **STARTER-007 / GROWTH-008 / ENTERPRISE-009** are PROCEED scenarios with post-provisioning simulation that backdates the provisioning timestamp and manipulates task states to create realistic onboarding risk conditions. These power the proactive alerts, suggested actions, and portfolio overview features.
 
+**BETA-002 / DELETED-004 / MISSING-999 / FOREX-005 / PARTIAL-006** also demonstrate the remediation loop required for a production-minded CS assistant. When a CS user approves the suggested action, the backend now simulates upstream fixes in Salesforce, CLM, and/or NetSuite, then re-runs onboarding so the account can actually move from `BLOCK` or `ESCALATE` into `PROCEED` and provisioning.
+
 ### Error Simulation
 
 Enable configurable error injection to test resilience:
@@ -741,6 +744,7 @@ uv run streamlit run streamlit_app.py
 | `send_task_reminder` | Sends reminder to task owner (customer or CS team) |
 | `escalate_stalled_onboarding` | Posts to #cs-onboarding-escalations with progress snapshot |
 | `update_onboarding_task` | Update task status (pending/in_progress/completed/blocked/skipped) |
+| `simulate_issue_resolution` | Simulate that upstream warnings/violations were resolved, then allow a safe onboarding re-run |
 
 ### Portfolio Management Tools (3 tools)
 
@@ -768,7 +772,7 @@ uv run streamlit run streamlit_app.py
 | GET | `/demo/alerts` | Aggregated risk alerts across all accounts (provisioned + blocked/escalated) |
 | GET | `/demo/portfolio-summary` | Portfolio overview with health distribution, account list, and priority actions |
 | GET | `/demo/suggested-actions` | Smart suggested actions with approve/dismiss across all accounts |
-| POST | `/demo/execute-action` | Execute a suggested action (send reminder, escalate, re-run onboarding, etc.) |
+| POST | `/demo/execute-action` | Execute a suggested action (send reminder, escalate, simulate remediation, re-run onboarding, etc.) |
 
 ## 📁 Project Structure
 
@@ -856,7 +860,7 @@ The following features would enhance the agent for production use:
 
 | Limitation | Current State | Production Enhancement |
 |------------|---------------|----------------------|
-| **No human-in-the-loop approval** | Suggested Actions panel provides approve/dismiss UI for risk-derived actions; ESCALATE decisions can be reviewed and re-run | Add Slack interactive buttons for approve/reject before provisioning |
+| **No human-in-the-loop approval** | Suggested Actions panel provides approve/dismiss UI for risk-derived actions; blocked/escalated accounts can now be remediated and re-run from the UI/API | Add Slack interactive buttons for approve/reject before provisioning |
 | **Event-driven task completion** | Tasks must be manually marked complete via API | Integrate webhooks from SaaS platform to auto-complete when customer takes action |
 | **No customer-facing portal** | Customer can't see their onboarding progress | Build React dashboard showing task checklist and status |
 | **Single workflow execution** | Agent runs once per trigger | Add retry/resume capability for failed workflows |
@@ -874,7 +878,7 @@ The following features would enhance the agent for production use:
 | Task overdue detection | ✅ Proactive | CS assistant detects overdue tasks via `identify_onboarding_risks` |
 | Task due date reminders | ✅ Proactive | `send_task_reminder` tool sends reminders to task owners |
 | Proactive alerts panel | ✅ Proactive | Dashboard surfaces urgent items automatically, grouped by account |
-| Suggested actions with approve/dismiss | ✅ Proactive | Risk-derived actions with one-click execution and detailed explanations |
+| Suggested actions with approve/dismiss | ✅ Proactive | Risk-derived actions with one-click execution; blocked/escalated accounts now simulate remediation and re-enter the provisioning flow |
 | Portfolio health overview | ✅ Proactive | Aggregated health distribution and priority actions across all accounts |
 | Batch portfolio operations | ✅ Proactive | Send reminders to all overdue/stalled accounts via chat or UI |
 | Customer action tracking | ⚠️ Passive | Agent can check progress but no auto-detection via webhooks |

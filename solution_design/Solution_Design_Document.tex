@@ -52,7 +52,7 @@
 %==============================================================================
 \section{Architecture Overview}
 
-The solution implements an \textbf{AI-powered automation agent} that orchestrates enterprise customer onboarding from deal closure through SaaS provisioning. Built with \textbf{Pydantic AI} for agentic tool calling and \textbf{FastAPI} for the REST interface, the agent uses native LLM tool calling to autonomously reason through 24 registered tools. Each tool is mirrored as a \textbf{FastMCP} server definition for MCP-style extraction. A second \textbf{CS Assistant Agent} shares all tools but returns free-form text for conversational interaction via a \textbf{Streamlit UI} with four pages (Dashboard, Portfolio Overview, Run Onboarding, Chat). Data flows sequentially across systems via \textbf{cross-system chaining}: Opportunity.ContractId $\rightarrow$ SF Contract.Id $\rightarrow$ CLM.salesforce\_contract\_id $\rightarrow$ Invoice.clmContractRef, with fallback to account-based lookups when chain links are missing.
+The solution implements an \textbf{AI-powered automation agent} that orchestrates enterprise customer onboarding from deal closure through SaaS provisioning. Built with \textbf{Pydantic AI} for agentic tool calling and \textbf{FastAPI} for the REST interface, the agent uses native LLM tool calling to autonomously reason through 24 registered tools. Each tool is mirrored as a \textbf{FastMCP} server definition for MCP-style extraction. A second \textbf{CS Assistant Agent} shares all tools but returns free-form text for conversational interaction via a \textbf{Streamlit UI} with four pages (Dashboard, Portfolio Overview, Run Onboarding, Chat). Data flows sequentially across systems via \textbf{cross-system chaining}: Opportunity.ContractId $\rightarrow$ SF Contract.Id $\rightarrow$ CLM.salesforce\_contract\_id $\rightarrow$ Invoice.clmContractRef, with fallback to account-based lookups when chain links are missing. The latest prototype also closes the CS action loop: suggested actions can simulate upstream issue resolution in mocked SaaS systems and then re-run onboarding so a previously blocked or escalated account can actually progress into provisioning.
 
 \vspace{0.1em}
 \subsection{System Integrations}
@@ -85,7 +85,7 @@ The solution implements an \textbf{AI-powered automation agent} that orchestrate
 \textbf{(1)} Webhook with \texttt{account\_id} + \texttt{correlation\_id}
 \textbf{(2)} Fetch account, then user/opportunity in parallel; chain sequentially: Opp.ContractId $\rightarrow$ SF Contract $\rightarrow$ CLM (via salesforce\_contract\_id) $\rightarrow$ Invoice (via clmContractRef)
 \textbf{(3)} \texttt{validate\_business\_rules} + \texttt{check\_financial\_alignment}
-\textbf{(4)} PROCEED $\rightarrow$ provision + monitor; BLOCK/ESCALATE $\rightarrow$ notify.
+\textbf{(4)} PROCEED $\rightarrow$ provision + monitor; BLOCK/ESCALATE $\rightarrow$ notify, remediate, and optionally re-run.
 }
 \end{minipage}
 
@@ -127,6 +127,7 @@ The agent leverages \textbf{OpenAI GPT-4o-mini} (configurable via \texttt{OPENAI
 \item Generates HTML/Markdown/JSON reports for auditing and traceability.
 \item Post-provisioning: monitors progress, detects risks, sends reminders, escalates stalled onboardings.
 \item Portfolio management: aggregated alerts across accounts, suggested actions with approve/dismiss, batch reminders.
+\item Remediation loop: the CS assistant can simulate source-system fixes (deal closed, contract executed, invoice paid, missing record created) and safely re-run onboarding from BLOCK/ESCALATE into PROCEED.
 \end{enumerate}
 \end{minipage}
 \hfill
@@ -174,6 +175,29 @@ The provisioning system creates a 14-task onboarding checklist:
 \vspace{0.1em}
 Tasks include dependencies (e.g., ``Complete Tour'' depends on ``Verify Login''), due dates calculated relative to provisioning, and ownership assignment enabling filtered views per team.
 }
+
+%==============================================================================
+% SECTION B.4: SENTIMENT ANALYSIS
+%==============================================================================
+\vspace{0.2em}
+\subsection{Sentiment Analysis as a Proactive Risk Signal}
+{\scriptsize
+Beyond task and billing state, the CS assistant also tracks \textbf{customer sentiment} from inbound and outbound interactions such as email, chat, support tickets, and calls. The prototype exposes two sentiment tools: \texttt{log\_customer\_interaction} records structured interactions for an account, and \texttt{get\_customer\_sentiment} returns a score, label (positive/neutral/negative), and trend (improving/stable/declining). This allows the agent to identify onboarding risk \emph{before} a task is formally overdue or blocked.
+}
+
+\vspace{0.08em}
+\begin{table}[H]
+\scriptsize
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Sentiment Signal} & \textbf{Agent Behavior} \\
+\midrule
+Negative sentiment + declining trend & Recommend proactive outreach, schedule a check-in call, raise account priority in portfolio alerts \\
+Negative sentiment + blocked onboarding tasks & Escalate urgency because operational blockers and customer frustration are compounding \\
+Improving sentiment after outreach & Reduce risk posture and keep onboarding in the monitored PROCEED path \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
 %==============================================================================
 % SECTION B.5: BUSINESS RULE VALIDATION
@@ -337,7 +361,7 @@ LLM Advisory Only & Auditable but less adaptive \\
 \item \textbf{Mock integrations}: Salesforce, NetSuite, CLM use simulated data; not connected to real APIs
 \item \textbf{In-memory state}: Provisioning and task data lost on restart; no persistent database
 \item \textbf{Single instance}: No horizontal scaling or load balancing
-\item \textbf{Limited approval UI}: Suggested Actions panel provides approve/dismiss; full Slack interactive approval not yet implemented
+\item \textbf{Limited approval UI}: Suggested Actions panel provides approve/dismiss and real backend execution; full Slack interactive approval with identity/policy controls not yet implemented
 \item \textbf{No webhook auth}: Inbound webhooks not verified via HMAC or shared secret
 \end{itemize}
 }
@@ -350,7 +374,7 @@ LLM Advisory Only & Auditable but less adaptive \\
 \vspace{0.15em}
 \subsection{Testing \& Demonstration}
 {\scriptsize
-The system includes 10 pre-configured demo scenarios validating all decision paths. Three PROCEED scenarios include post-provisioning simulation to demonstrate proactive risk detection:
+The system includes 10 pre-configured demo scenarios validating all decision paths. Three PROCEED scenarios include post-provisioning simulation to demonstrate proactive risk detection, and five BLOCK/ESCALATE scenarios now support remediation plus onboarding re-run to demonstrate closed-loop CS intervention:
 }
 
 \vspace{0.05em}
@@ -373,6 +397,17 @@ The system includes 10 pre-configured demo scenarios validating all decision pat
 \bottomrule
 \end{tabularx}
 \end{table}
+
+{\scriptsize
+\textbf{Risk and action scenarios after provisioning:}
+\begin{itemize}[leftmargin=1.2em]
+\item \texttt{STARTER-007}: detects customer inactivity (no login after 5 days) and recommends or executes a login reminder.
+\item \texttt{GROWTH-008}: detects onboarding stalling ($<$30\% complete after 10 days) and escalates to CS management.
+\item \texttt{ENTERPRISE-009}: detects blocked SSO work plus overdue customer tasks and recommends SSO follow-up, task reminders, or escalation.
+\item \texttt{Sentiment scenario}: repeated negative customer interactions produce a declining sentiment trend; the CS assistant recommends a proactive call and the suggested-action flow can execute that outreach.
+\item \texttt{BETA-002}, \texttt{DELETED-004}, \texttt{MISSING-999}, \texttt{FOREX-005}, \texttt{PARTIAL-006}: support simulated remediation of source-system blockers/warnings followed by a fresh onboarding run into provisioning.
+\end{itemize}
+}
 
 %==============================================================================
 % SECTION D.6: OBSERVABILITY & SECURITY
