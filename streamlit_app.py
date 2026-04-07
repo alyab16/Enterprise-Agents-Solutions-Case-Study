@@ -30,10 +30,10 @@ st.set_page_config(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def api_get(path: str):
+def api_get(path: str, timeout: int = 30):
     """GET request to the FastAPI backend."""
     try:
-        r = requests.get(f"{API_BASE}{path}", timeout=30)
+        r = requests.get(f"{API_BASE}{path}", timeout=timeout)
         return r.json()
     except requests.ConnectionError:
         st.error("Cannot connect to API. Start the backend with `python main.py`.")
@@ -440,9 +440,9 @@ elif page == "Run Onboarding":
             st.markdown(f"### Decision: :{color}[{decision}]")
             st.markdown(f"**Summary:** {result.get('summary', 'N/A')}")
 
-            # Violations & Warnings
-            tab_v, tab_w, tab_a, tab_p = st.tabs(
-                ["Violations", "Warnings", "Actions", "Provisioning"]
+            # Violations, warnings, execution actions, live risks, provisioning
+            tab_v, tab_w, tab_a, tab_r, tab_p = st.tabs(
+                ["Violations", "Warnings", "Actions", "Risks", "Provisioning"]
             )
 
             with tab_v:
@@ -473,15 +473,88 @@ elif page == "Run Onboarding":
                 else:
                     st.info("No actions taken")
 
+            with tab_r:
+                if decision == "PROCEED":
+                    sentiment_data = api_get(f"/sentiment/{scenario['id']}", timeout=90)
+                    risks = api_get(f"/risks/{scenario['id']}", timeout=90)
+                    suggested = api_get("/suggested-actions", timeout=90)
+
+                    # Sentiment section (available even before provisioning)
+                    if sentiment_data and sentiment_data.get("interaction_count", 0) > 0:
+                        st.markdown("**Customer Sentiment**")
+                        sc1, sc2, sc3, sc4 = st.columns(4)
+                        sc1.metric("Score", sentiment_data.get("score", 0.0))
+                        sc2.metric("Label", sentiment_data.get("label", "neutral").title())
+                        sc3.metric("Trend", sentiment_data.get("trend", "stable").replace("_", " ").title())
+                        sc4.metric("Model", "DistilBERT" if "distilbert" in sentiment_data.get("model", "") else "Keyword")
+                        if sentiment_data.get("summary"):
+                            st.caption(sentiment_data["summary"])
+                        st.divider()
+
+                    # Post-provisioning risks (only when account is provisioned)
+                    if risks and risks.get("status") == "NOT_PROVISIONED":
+                        st.info("Post-provisioning risk monitoring will be available once the account is provisioned")
+                    elif risks and risks.get("risk_count", 0) > 0:
+                        st.markdown("**Detected Risks:**")
+                        for risk in risks["risks"]:
+                            sev = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(
+                                risk.get("severity", ""), "⚪"
+                            )
+                            st.markdown(
+                                f"- {sev} **{risk['risk']}**: {risk['detail']}  \n"
+                                f"  Recommended: {risk['recommendation']}"
+                            )
+                    else:
+                        st.success("No live post-provisioning risks detected")
+
+                    if suggested and suggested.get("actions"):
+                        account_actions = [
+                            action for action in suggested["actions"]
+                            if action.get("account_id") == scenario["id"]
+                        ]
+                        if account_actions:
+                            st.markdown("**Suggested Actions:**")
+                            for action in account_actions:
+                                st.markdown(
+                                    f"- {action.get('icon', '📋')} **{action['description']}**"
+                                )
+                                for sub in action.get("sub_actions", []):
+                                    st.caption(
+                                        f"{sub.get('action_type', 'action')}: {sub.get('description', '')}"
+                                    )
+                else:
+                    st.info("Risk monitoring is only available after provisioning")
+
             with tab_p:
                 if decision == "PROCEED":
                     # Fetch live provisioning progress (simulation may have updated state)
-                    progress = api_get(f"/progress/{scenario['id']}")
-                    if progress and progress.get("status") != "error":
+                    progress = api_get(f"/progress/{scenario['id']}", timeout=90)
+                    if progress and progress.get("status") not in ("error", "NOT_PROVISIONED"):
+                        live_risks = api_get(f"/risks/{scenario['id']}", timeout=90)
                         pc1, pc2, pc3 = st.columns(3)
                         pc1.metric("Completion", f"{progress.get('completion_percentage', 0)}%")
                         pc2.metric("Health", progress.get("health_status", "N/A").replace("_", " ").title())
                         pc3.metric("Day", progress.get("days_since_provisioning", 0))
+
+                        sentiment = progress.get("sentiment", {})
+                        if sentiment:
+                            st.caption(
+                                f"Sentiment: {sentiment.get('label', 'neutral').title()} "
+                                f"({sentiment.get('score', 0.0)}), trend: "
+                                f"{str(sentiment.get('trend', 'stable')).replace('_', ' ').title()}"
+                            )
+
+                        if live_risks and live_risks.get("risk_count", 0) > 0:
+                            st.markdown("**Current Risks:**")
+                            for risk in live_risks["risks"]:
+                                sev = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(
+                                    risk.get("severity", ""), "⚪"
+                                )
+                                st.markdown(
+                                    f"- {sev} **{risk['risk']}**: {risk['detail']}"
+                                )
+                        else:
+                            st.success("No current post-provisioning risks detected")
 
                         tb = progress.get("task_breakdown", {})
                         tc1, tc2, tc3, tc4 = st.columns(4)

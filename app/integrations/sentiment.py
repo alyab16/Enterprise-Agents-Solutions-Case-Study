@@ -5,12 +5,45 @@ Analyses customer interactions (emails, chat messages, support tickets)
 to produce sentiment scores, trends, and early-warning signals. Feeds
 into the health assessment so CS can act before tasks actually stall.
 
-In production this would call an NLP/LLM sentiment service.  The mock
-uses keyword-based scoring tied to simulation profiles.
+Uses a HuggingFace DistilBERT transformer model (distilbert-base-uncased-
+finetuned-sst-2-english) for real ML inference when torch + transformers
+are installed.  Falls back to keyword-based scoring otherwise.
 """
 
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Transformer-based sentiment model (lazy-loaded singleton)
+# ---------------------------------------------------------------------------
+
+_pipeline = None  # Will hold the HF pipeline once loaded
+_USE_TRANSFORMER: bool | None = None  # None = not yet checked
+
+
+def _load_model():
+    """Lazy-load the HuggingFace sentiment pipeline on first use."""
+    global _pipeline, _USE_TRANSFORMER
+    if _USE_TRANSFORMER is not None:
+        return  # already attempted
+
+    try:
+        from transformers import pipeline as hf_pipeline
+        _pipeline = hf_pipeline(
+            "sentiment-analysis",
+            model="distilbert-base-uncased-finetuned-sst-2-english",
+            top_k=None,          # return scores for all labels
+            truncation=True,     # handle long texts gracefully
+        )
+        _USE_TRANSFORMER = True
+        logger.info("Sentiment model loaded: distilbert-base-uncased-finetuned-sst-2-english")
+    except Exception as exc:
+        _USE_TRANSFORMER = False
+        logger.warning("Transformer model unavailable, falling back to keyword scorer: %s", exc)
+
 
 # ---------------------------------------------------------------------------
 # Mock interaction store: account_id -> list of interactions
@@ -125,7 +158,39 @@ _SEED_INTERACTIONS: Dict[str, List[dict]] = {
 
 
 # ---------------------------------------------------------------------------
-# Keyword-based sentiment scorer (mock NLP)
+# Sentiment scoring — transformer model with keyword fallback
+# ---------------------------------------------------------------------------
+
+def _score_text(text: str) -> float:
+    """Return a sentiment score between -1.0 (very negative) and 1.0 (very positive).
+
+    Uses DistilBERT when available; otherwise falls back to keyword matching.
+    """
+    _load_model()
+    if _USE_TRANSFORMER:
+        return _score_text_transformer(text)
+    return _score_text_keywords(text)
+
+
+def _score_text_transformer(text: str) -> float:
+    """Score text using the HuggingFace DistilBERT sentiment model.
+
+    The model returns POSITIVE/NEGATIVE labels with confidence scores.
+    We map these to a -1.0 … +1.0 scale:
+        POSITIVE 0.95 → +0.95
+        NEGATIVE 0.80 → -0.80
+    """
+    results = _pipeline(text)[0]  # list of {label, score} dicts
+    label_scores = {r["label"]: r["score"] for r in results}
+    pos = label_scores.get("POSITIVE", 0.0)
+    neg = label_scores.get("NEGATIVE", 0.0)
+    # Map to [-1, 1]: positive confidence pushes toward +1, negative toward -1
+    score = pos - neg
+    return round(score, 2)
+
+
+# ---------------------------------------------------------------------------
+# Keyword fallback (used when torch/transformers are not installed)
 # ---------------------------------------------------------------------------
 
 _POSITIVE_KEYWORDS = {
@@ -145,14 +210,14 @@ _NEGATIVE_KEYWORDS = {
 }
 
 
-def _score_text(text: str) -> float:
-    """Return a sentiment score between -1.0 (very negative) and 1.0 (very positive)."""
+def _score_text_keywords(text: str) -> float:
+    """Fallback keyword-based scorer."""
     lower = text.lower()
     pos = sum(1 for kw in _POSITIVE_KEYWORDS if kw in lower)
     neg = sum(1 for kw in _NEGATIVE_KEYWORDS if kw in lower)
     total = pos + neg
     if total == 0:
-        return 0.0  # neutral
+        return 0.0
     return round((pos - neg) / total, 2)
 
 
@@ -241,12 +306,14 @@ def get_sentiment_score(account_id: str) -> dict:
         for m in recent
     ]
 
+    _load_model()
     return {
         "account_id": account_id,
         "score": avg,
         "label": label,
         "interaction_count": len(customer_msgs),
         "recent_scores": recent_scores,
+        "model": "distilbert-base-uncased-finetuned-sst-2-english" if _USE_TRANSFORMER else "keyword-fallback",
         "summary": _build_summary(account_id, avg, label, customer_msgs),
     }
 
