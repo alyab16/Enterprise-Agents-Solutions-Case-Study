@@ -7,12 +7,13 @@ An AI-powered customer onboarding automation agent built with **Pydantic AI + Fa
 This agent automates the customer journey from **Sales → Contract → Invoice → Provisioning**, featuring:
 
 - **Agentic Architecture**: The LLM reasons and decides which tools to call — no hardcoded state machine or graph
-- **Native Tool Calling**: 24 tools registered via `@agent.tool` decorators; the agent orchestrates them autonomously
+- **Native Tool Calling**: 26 tools registered via `@agent.tool` decorators; the agent orchestrates them autonomously
 - **Cross-System Data Chaining**: Sequential Sales → Contract → CLM → Invoice lookups where each system's output feeds the next
 - **Dual-Agent Design**: Onboarding agent (structured output) + CS Assistant agent (free-form chat for monitoring and actions)
 - **Streamlit UI**: Dashboard with proactive alerts and suggested actions, portfolio overview, scenario runner, and interactive chat with multi-account commands
 - **MCP-Style Extensibility**: Every tool is mirrored as a FastMCP server definition for future extraction to standalone services
 - **Multi-System Integration**: Salesforce, CLM, NetSuite, currency conversion (live API), and SaaS provisioning
+- **Customer Sentiment Analysis**: Keyword-based scoring of customer interactions (emails, chat, support tickets) with trend detection, feeding into health assessments and risk identification
 - **Post-Provisioning Monitoring**: Onboarding progress tracking, risk detection, task reminders, escalation tools, and portfolio-wide alerts
 - **Proactive Alerts & Suggested Actions**: Automated risk surfacing with one-click actions that mutate onboarding/provisioning state, simulate CS remediation, and re-run blocked or escalated accounts
 - **Closed-Loop CS Resolution**: The CS assistant can simulate that warnings/violations were resolved in source systems, then re-run onboarding to convert `BLOCK`/`ESCALATE` into `PROCEED`
@@ -45,14 +46,15 @@ Onboarding Agent (Pydantic AI — structured output)
   ├── Currency Tool (1)      → Historical/live exchange rates (Frankfurter API)
   ├── Provisioning (1)       → SaaS tenant creation
   ├── CS Monitoring (5)      → Progress tracking, risk detection, reminders, escalation, task updates
+  ├── Sentiment Tools (2)    → Customer sentiment scoring, interaction logging
   ├── Portfolio Tools (3)    → Portfolio overview, aggregated alerts, batch reminders
   └── Notification Tools (6) → Slack, Email, Welcome
 
-CS Assistant Agent (Pydantic AI — free-form text, shares all 24 tools)
+CS Assistant Agent (Pydantic AI — free-form text, shares all 26 tools)
   └── Interactive chat for CS team to query status, identify risks, manage portfolio, and take batch actions
 ```
 
-The agent decides **what to call, in what order, and how many times** based on tool results. Adding a new capability means registering a new `@agent.tool` — zero changes to orchestration logic.
+The agent decides **what to call, in what order, and how many times** based on tool results. Adding a new capability means registering a new `@agent.tool` — zero changes to orchestration logic. Sentiment analysis acts as a **predictive signal** — negative sentiment can flag an account as at-risk before task-level metrics show problems.
 
 Each tool is also defined as a **FastMCP server** in `app/mcp/`, ready for extraction to standalone MCP services.
 
@@ -179,7 +181,7 @@ flowchart LR
         PORT_AL["get_all_alerts"]
         PORT_BA["batch_send\n_reminders"]
   end
- subgraph AGENT["2 · PYDANTIC AI AGENT — 24 tools via @agent.tool"]
+ subgraph AGENT["2 · PYDANTIC AI AGENT — 26 tools via @agent.tool"]
         ENTRY["Initialize OnboardingDeps\n(account_id, correlation_id)"]
         FETCH
         VALIDATE
@@ -211,6 +213,7 @@ flowchart LR
         MCP_PRV["provisioning_server\n(account activation)"]
         MCP_NOT["notifications_server\n(Slack, email)"]
         MCP_VAL["validation_server\n(business rules)"]
+        MCP_SENT["sentiment_server\n(customer sentiment)"]
   end
  subgraph EXT["6 · EXTERNAL SYSTEMS — third-party integrations"]
     direction TB
@@ -279,6 +282,7 @@ flowchart LR
      MCP_PRV:::mcp
      MCP_NOT:::mcp
      MCP_VAL:::mcp
+     MCP_SENT:::mcp
      MON_PROG:::monitor
      MON_RISK:::monitor
      MON_REM:::monitor
@@ -697,13 +701,61 @@ When an account is provisioned, the agent automatically creates a **granular onb
 14. ⏳ Onboarding Complete (cs_team - pending, due in 45 days)
 ```
 
+## 🎭 Customer Sentiment Analysis
+
+The agent includes a **sentiment analysis system** that scores customer interactions and feeds signals into health assessments and risk detection — enabling CS teams to act before tasks actually stall.
+
+### How It Works
+
+1. **Interaction Tracking**: Customer communications (emails, chat messages, support tickets) are logged with channel, direction, and author metadata
+2. **Keyword-Based Scoring**: Each inbound customer message is scored from **-1.0** (very negative) to **+1.0** (very positive) using keyword matching against positive and negative lexicons
+3. **Aggregate Score**: Per-account scores are averaged across all inbound customer messages, producing a label: `positive` (≥ 0.3), `neutral`, or `negative` (≤ -0.3)
+4. **Trend Detection**: Compares the average score of the older half vs. newer half of interactions to determine if sentiment is `improving`, `stable`, or `declining` (threshold: ±0.15 delta)
+
+### Integration with Health Assessment
+
+Sentiment feeds directly into two systems:
+
+- **Health Status** (`check_onboarding_progress`): A `negative` sentiment label shifts the account health to `at_risk`, even if task completion metrics look normal
+- **Risk Detection** (`identify_onboarding_risks`): Negative sentiment generates a `high` severity risk if the trend is declining, or `medium` otherwise. A declining trend alone (even with neutral score) generates a `medium` risk
+
+### Seed Data for Demo Scenarios
+
+| Account | Profile | Sentiment Pattern |
+|---------|---------|-------------------|
+| ACME-001 | Happy path | Positive — grateful, engaged customer |
+| STARTER-007 | `no_login` | Negative — frustrated about login access delays |
+| GROWTH-008 | `stalled` | Negative — disappointed, losing confidence, considering alternatives |
+| ENTERPRISE-009 | `blocked_sso` | Mixed — positive kickoff, then frustrated about SSO delays |
+
+### Suggested Actions
+
+When negative sentiment is detected, the proactive alerts system generates a **"Schedule check-in call"** suggested action. Approving it simulates a CS outreach call and a positive customer response, improving the sentiment score.
+
+### Agent Tools
+
+| Tool | Description |
+|------|-------------|
+| `get_customer_sentiment` | Returns aggregate score, label, trend, and recent interaction scores for an account |
+| `log_customer_interaction` | Records a new interaction (email/chat/support_ticket/call) for ongoing sentiment tracking |
+
+### Sentiment API Endpoint
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/demo/sentiment/{account_id}` | Get sentiment score, trend, and interaction details |
+
+### MCP Server
+
+Sentiment tools are mirrored as a **FastMCP server** (`app/mcp/sentiment_server.py`) with three tools: `get_sentiment_score`, `get_sentiment_trend`, and `log_interaction`.
+
 ## 💬 CS Assistant & Streamlit UI
 
 The project includes a **dual-agent architecture** and a **Streamlit UI** for interactive use:
 
 ### CS Assistant Agent
 
-A second agent (`cs_assistant_agent`) shares all 24 tools but returns free-form text instead of structured output. It enables CS managers to interact conversationally:
+A second agent (`cs_assistant_agent`) shares all 26 tools but returns free-form text instead of structured output. It enables CS managers to interact conversationally:
 
 - "What's the onboarding progress for ACME-001?"
 - "Are there any risks with this account?"
@@ -763,6 +815,7 @@ uv run streamlit run streamlit_app.py
 | POST | `/demo/remind/{account_id}/{task_id}` | Send task reminder |
 | POST | `/demo/escalate/{account_id}` | Escalate stalled onboarding |
 | GET | `/demo/active-onboardings` | All onboarding results with progress |
+| GET | `/demo/sentiment/{account_id}` | Customer sentiment score and trend |
 | POST | `/demo/chat` | Chat with CS assistant agent |
 
 ### Portfolio & Proactive Alerts Endpoints
@@ -804,7 +857,8 @@ Enterprise-Agents-Solutions-Case-Study/
     │   ├── currency_server.py            # Currency conversion as MCP
     │   ├── provisioning_server.py        # Provisioning + monitoring tools as MCP
     │   ├── notifications_server.py       # Notification tools as MCP
-    │   └── validation_server.py          # Validation tools as MCP
+    │   ├── validation_server.py          # Validation tools as MCP
+    │   └── sentiment_server.py          # Sentiment analysis tools as MCP
     │
     ├── api/                              # REST endpoints
     │   ├── demo.py                       # Demo, monitoring, chat endpoints
@@ -816,6 +870,7 @@ Enterprise-Agents-Solutions-Case-Study/
     │   ├── netsuite.py                   # NetSuite ERP (with clmContractRef cross-ref)
     │   ├── currency.py                   # Currency conversion with historical rates (Frankfurter API)
     │   ├── provisioning.py               # Provisioning + monitoring/risk/escalation
+    │   ├── sentiment.py                  # Customer sentiment scoring + trend analysis
     │   └── api_errors.py                 # Error hierarchy + simulator
     │
     ├── tracing.py                        # Dual tracing setup (Logfire + LangSmith)
@@ -881,6 +936,7 @@ The following features would enhance the agent for production use:
 | Suggested actions with approve/dismiss | ✅ Proactive | Risk-derived actions with one-click execution; blocked/escalated accounts now simulate remediation and re-enter the provisioning flow |
 | Portfolio health overview | ✅ Proactive | Aggregated health distribution and priority actions across all accounts |
 | Batch portfolio operations | ✅ Proactive | Send reminders to all overdue/stalled accounts via chat or UI |
+| Customer sentiment analysis | ✅ Proactive | Negative sentiment shifts health to at_risk and triggers check-in call suggestion |
 | Customer action tracking | ⚠️ Passive | Agent can check progress but no auto-detection via webhooks |
 | Escalation to management | ✅ Proactive | `escalate_stalled_onboarding` posts to #cs-onboarding-escalations |
 | Interactive CS dashboard | ✅ Implemented | Streamlit UI with Dashboard, Portfolio, Run Onboarding, and Chat pages |

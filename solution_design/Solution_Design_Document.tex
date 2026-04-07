@@ -52,7 +52,7 @@
 %==============================================================================
 \section{Architecture Overview}
 
-The solution implements an \textbf{AI-powered automation agent} that orchestrates enterprise customer onboarding from deal closure through SaaS provisioning. Built with \textbf{Pydantic AI} for agentic tool calling and \textbf{FastAPI} for the REST interface, the agent uses native LLM tool calling to autonomously reason through 24 registered tools. Each tool is mirrored as a \textbf{FastMCP} server definition for MCP-style extraction. A second \textbf{CS Assistant Agent} shares all tools but returns free-form text for conversational interaction via a \textbf{Streamlit UI} with four pages (Dashboard, Portfolio Overview, Run Onboarding, Chat). Data flows sequentially across systems via \textbf{cross-system chaining}: Opportunity.ContractId $\rightarrow$ SF Contract.Id $\rightarrow$ CLM.salesforce\_contract\_id $\rightarrow$ Invoice.clmContractRef, with fallback to account-based lookups when chain links are missing. The latest prototype also closes the CS action loop: suggested actions can simulate upstream issue resolution in mocked SaaS systems and then re-run onboarding so a previously blocked or escalated account can actually progress into provisioning.
+The solution implements an \textbf{AI-powered automation agent} that orchestrates enterprise customer onboarding from deal closure through SaaS provisioning. Built with \textbf{Pydantic AI} for agentic tool calling and \textbf{FastAPI} for the REST interface, the agent uses native LLM tool calling to autonomously reason through 26 registered tools. Each tool is mirrored as a \textbf{FastMCP} server definition for MCP-style extraction. A second \textbf{CS Assistant Agent} shares all tools but returns free-form text for conversational interaction via a \textbf{Streamlit UI} with four pages (Dashboard, Portfolio Overview, Run Onboarding, Chat). Data flows sequentially across systems via \textbf{cross-system chaining}: Opportunity.ContractId $\rightarrow$ SF Contract.Id $\rightarrow$ CLM.salesforce\_contract\_id $\rightarrow$ Invoice.clmContractRef, with fallback to account-based lookups when chain links are missing. The latest prototype also closes the CS action loop: suggested actions can simulate upstream issue resolution in mocked SaaS systems and then re-run onboarding so a previously blocked or escalated account can actually progress into provisioning.
 
 \vspace{0.1em}
 \subsection{System Integrations}
@@ -93,7 +93,7 @@ The solution implements an \textbf{AI-powered automation agent} that orchestrate
 \begin{figure}[H]
 \centering
 \includegraphics[width=\textwidth,height=14.5cm,keepaspectratio]{01_architecture.png}
-\caption{Architecture: triggers, Pydantic AI agent orchestration with 24 tools, cross-system data chaining, FastMCP servers, and external system integrations.}
+\caption{Architecture: triggers, Pydantic AI agent orchestration with 26 tools, cross-system data chaining, FastMCP servers, and external system integrations.}
 \end{figure}
 
 \newpage
@@ -103,7 +103,7 @@ The solution implements an \textbf{AI-powered automation agent} that orchestrate
 %==============================================================================
 \section{AI Agent Application}
 
-The agent leverages \textbf{OpenAI GPT-4o-mini} (configurable via \texttt{OPENAI\_MODEL}) with \textbf{Pydantic AI} for native tool calling. The LLM autonomously decides which of the 24 registered tools to call, in what order, and how many times. Falls back to \textbf{Ollama} local models when no API key is available. A second \textbf{CS Assistant Agent} shares all tools with free-form text output for conversational monitoring via the Streamlit UI.
+The agent leverages \textbf{OpenAI GPT-4o-mini} (configurable via \texttt{OPENAI\_MODEL}) with \textbf{Pydantic AI} for native tool calling. The LLM autonomously decides which of the 26 registered tools to call, in what order, and how many times. Falls back to \textbf{Ollama} local models when no API key is available. A second \textbf{CS Assistant Agent} shares all tools with free-form text output for conversational monitoring via the Streamlit UI.
 
 \vspace{0.05em}
 \begin{minipage}[t]{0.56\textwidth}
@@ -448,7 +448,7 @@ All integrations are mocked but demonstrate production security patterns:
 
 \begin{minipage}[t]{0.54\textwidth}
 \vspace{0pt}
-{\scriptsize\textit{Note: All 24 agent tools are mirrored as FastMCP server definitions in \texttt{app/mcp/} (7 servers: Salesforce, CLM, NetSuite, Currency, Provisioning, Notifications, Validation). These can be extracted to standalone MCP services for multi-agent collaboration.}}
+{\scriptsize\textit{Note: All 26 agent tools are mirrored as FastMCP server definitions in \texttt{app/mcp/} (8 servers: Salesforce, CLM, NetSuite, Currency, Provisioning, Notifications, Validation, Sentiment). These can be extracted to standalone MCP services for multi-agent collaboration.}}
 
 \vspace{0.1em}
 {\scriptsize
@@ -564,7 +564,7 @@ directory in the repository.}}
 \textbf{LLM Data Governance}: Field-filtered and sanitized data sent to LLMs. PII masked prior to inference. Credentials never exposed beyond integration boundaries.
 
 \vspace{0.1em}
-\textbf{Multi-Agent Interoperability}: All 24 tools mirrored as FastMCP server definitions (7 servers in \texttt{app/mcp/}). Extractable to standalone MCP services with independent versioning, access control, and audit logging. A2A protocol for agent-to-agent collaboration.
+\textbf{Multi-Agent Interoperability}: All 26 tools mirrored as FastMCP server definitions (8 servers in \texttt{app/mcp/}). Extractable to standalone MCP services with independent versioning, access control, and audit logging. A2A protocol for agent-to-agent collaboration.
 }
 
 \begin{center}
