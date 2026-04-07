@@ -7,13 +7,13 @@ An AI-powered customer onboarding automation agent built with **Pydantic AI + Fa
 This agent automates the customer journey from **Sales → Contract → Invoice → Provisioning**, featuring:
 
 - **Agentic Architecture**: The LLM reasons and decides which tools to call — no hardcoded state machine or graph
-- **Native Tool Calling**: 26 tools registered via `@agent.tool` decorators; the agent orchestrates them autonomously
+- **Native Tool Calling**: 28 tools registered via `@agent.tool` decorators; the agent orchestrates them autonomously
 - **Cross-System Data Chaining**: Sequential Sales → Contract → CLM → Invoice lookups where each system's output feeds the next
 - **Dual-Agent Design**: Onboarding agent (structured output) + CS Assistant agent (free-form chat for monitoring and actions)
 - **Streamlit UI**: Dashboard with proactive alerts and suggested actions, portfolio overview, scenario runner, and interactive chat with multi-account commands
 - **MCP-Style Extensibility**: Every tool is mirrored as a FastMCP server definition for future extraction to standalone services
 - **Multi-System Integration**: Salesforce, CLM, NetSuite, currency conversion (live API), and SaaS provisioning
-- **Customer Sentiment Analysis**: Keyword-based scoring of customer interactions (emails, chat, support tickets) with trend detection, feeding into health assessments and risk identification
+- **Customer Sentiment Analysis**: ML-powered scoring (DistilBERT transformer via PyTorch + HuggingFace) of customer interactions (emails, chat, support tickets) with trend detection, feeding into health assessments and risk identification
 - **Post-Provisioning Monitoring**: Onboarding progress tracking, risk detection, task reminders, escalation tools, and portfolio-wide alerts
 - **Proactive Alerts & Suggested Actions**: Automated risk surfacing with one-click actions that mutate onboarding/provisioning state, simulate CS remediation, and re-run blocked or escalated accounts
 - **Closed-Loop CS Resolution**: The CS assistant can simulate that warnings/violations were resolved in source systems, then re-run onboarding to convert `BLOCK`/`ESCALATE` into `PROCEED`
@@ -45,12 +45,13 @@ Onboarding Agent (Pydantic AI — structured output)
   ├── Validation Tools (2)   → Business rules, Financial alignment
   ├── Currency Tool (1)      → Historical/live exchange rates (Frankfurter API)
   ├── Provisioning (1)       → SaaS tenant creation
-  ├── CS Monitoring (5)      → Progress tracking, risk detection, reminders, escalation, task updates
-  ├── Sentiment Tools (2)    → Customer sentiment scoring, interaction logging
+  ├── CS Monitoring (6)      → Progress tracking, risk detection, reminders, escalation, task updates, issue resolution
+  ├── Sentiment Tools (2)    → Customer sentiment scoring (DistilBERT ML inference), interaction logging
+  ├── Product Info (1)       → Tier config, SLA details, implementation prerequisites
   ├── Portfolio Tools (3)    → Portfolio overview, aggregated alerts, batch reminders
   └── Notification Tools (6) → Slack, Email, Welcome
 
-CS Assistant Agent (Pydantic AI — free-form text, shares all 26 tools)
+CS Assistant Agent (Pydantic AI — free-form text, shares all 28 tools)
   └── Interactive chat for CS team to query status, identify risks, manage portfolio, and take batch actions
 ```
 
@@ -181,7 +182,7 @@ flowchart LR
         PORT_AL["get_all_alerts"]
         PORT_BA["batch_send\n_reminders"]
   end
- subgraph AGENT["2 · PYDANTIC AI AGENT — 26 tools via @agent.tool"]
+ subgraph AGENT["2 · PYDANTIC AI AGENT — 28 tools via @agent.tool"]
         ENTRY["Initialize OnboardingDeps\n(account_id, correlation_id)"]
         FETCH
         VALIDATE
@@ -703,14 +704,15 @@ When an account is provisioned, the agent automatically creates a **granular onb
 
 ## 🎭 Customer Sentiment Analysis
 
-The agent includes a **sentiment analysis system** that scores customer interactions and feeds signals into health assessments and risk detection — enabling CS teams to act before tasks actually stall.
+The agent includes a **sentiment analysis system** powered by a **DistilBERT transformer model** (`distilbert-base-uncased-finetuned-sst-2-english`) via PyTorch and HuggingFace Transformers. It scores customer interactions and feeds signals into health assessments and risk detection — enabling CS teams to act before tasks actually stall.
 
 ### How It Works
 
 1. **Interaction Tracking**: Customer communications (emails, chat messages, support tickets) are logged with channel, direction, and author metadata
-2. **Keyword-Based Scoring**: Each inbound customer message is scored from **-1.0** (very negative) to **+1.0** (very positive) using keyword matching against positive and negative lexicons
+2. **ML Model Inference**: Each inbound customer message is scored from **-1.0** (very negative) to **+1.0** (very positive) using a fine-tuned DistilBERT model. The model returns POSITIVE/NEGATIVE label probabilities which are mapped to the score range (e.g., POSITIVE 0.95 → +0.95, NEGATIVE 0.80 → -0.80). Falls back to keyword-based scoring if PyTorch/Transformers are not installed
 3. **Aggregate Score**: Per-account scores are averaged across all inbound customer messages, producing a label: `positive` (≥ 0.3), `neutral`, or `negative` (≤ -0.3)
 4. **Trend Detection**: Compares the average score of the older half vs. newer half of interactions to determine if sentiment is `improving`, `stable`, or `declining` (threshold: ±0.15 delta)
+5. **Model Transparency**: The API response includes a `model` field indicating which scorer was used (`distilbert-base-uncased-finetuned-sst-2-english` or `keyword-fallback`)
 
 ### Integration with Health Assessment
 
@@ -755,7 +757,7 @@ The project includes a **dual-agent architecture** and a **Streamlit UI** for in
 
 ### CS Assistant Agent
 
-A second agent (`cs_assistant_agent`) shares all 26 tools but returns free-form text instead of structured output. It enables CS managers to interact conversationally:
+A second agent (`cs_assistant_agent`) shares all 28 tools but returns free-form text instead of structured output. It enables CS managers to interact conversationally:
 
 - "What's the onboarding progress for ACME-001?"
 - "Are there any risks with this account?"
@@ -784,19 +786,25 @@ uv run streamlit run streamlit_app.py
 |------|-------------|
 | **Dashboard** | Proactive alerts grouped by account, smart suggested actions with approve/dismiss, all onboarding results grouped by decision with health badges and expandable details |
 | **Portfolio Overview** | Aggregated health metrics (On Track/At Risk/Stalled/Blocked/Escalated), priority actions today, and sortable account table |
-| **Run Onboarding** | Scenario selector, run button, tabbed results (violations/warnings/actions/provisioning with live progress), and run-all-scenarios batch mode |
+| **Run Onboarding** | Scenario selector, run button, tabbed results (violations/warnings/actions/risks with sentiment scoring/provisioning with live progress), and run-all-scenarios batch mode |
 | **Chat with Agent** | Interactive chat with the CS assistant, account dropdown selector, portfolio-level quick actions (Portfolio Summary, All Alerts, Send All Reminders), and per-account actions |
 
-### CS Monitoring Tools (5 tools)
+### CS Monitoring Tools (6 tools)
 
 | Tool | Description |
 |------|-------------|
-| `check_onboarding_progress` | Completion %, task breakdown, health status (on_track/at_risk/stalled) |
-| `identify_onboarding_risks` | Detects: no login after 3 days, SSO not configured, tasks blocked, stalling, overdue actions |
+| `check_onboarding_progress` | Completion %, task breakdown, health status (on_track/at_risk/stalled), sentiment signal |
+| `identify_onboarding_risks` | Detects: no login after 3 days, SSO not configured, tasks blocked, stalling, overdue actions, negative sentiment |
 | `send_task_reminder` | Sends reminder to task owner (customer or CS team) |
 | `escalate_stalled_onboarding` | Posts to #cs-onboarding-escalations with progress snapshot |
 | `update_onboarding_task` | Update task status (pending/in_progress/completed/blocked/skipped) |
 | `simulate_issue_resolution` | Simulate that upstream warnings/violations were resolved, then allow a safe onboarding re-run |
+
+### Product Info Tool (1 tool)
+
+| Tool | Description |
+|------|-------------|
+| `lookup_product_info` | Tier configuration (features, limits, storage), SLA details, contractual terms, and implementation prerequisites per tier |
 
 ### Portfolio Management Tools (3 tools)
 
@@ -844,7 +852,7 @@ Enterprise-Agents-Solutions-Case-Study/
 └── app/
     ├── agent/                            # Pydantic AI agents
     │   ├── __init__.py                   # run_onboarding_async() entry point
-    │   ├── onboarding_agent.py           # Onboarding agent (24 tools) + CS assistant agent
+    │   ├── onboarding_agent.py           # Onboarding agent (28 tools) + CS assistant agent
     │   ├── dependencies.py               # OnboardingDeps (runtime context)
     │   ├── models.py                     # OnboardingResult (structured output)
     │   ├── state_utils.py                # State manipulation utilities
@@ -870,7 +878,7 @@ Enterprise-Agents-Solutions-Case-Study/
     │   ├── netsuite.py                   # NetSuite ERP (with clmContractRef cross-ref)
     │   ├── currency.py                   # Currency conversion with historical rates (Frankfurter API)
     │   ├── provisioning.py               # Provisioning + monitoring/risk/escalation
-    │   ├── sentiment.py                  # Customer sentiment scoring + trend analysis
+    │   ├── sentiment.py                  # Sentiment analysis (DistilBERT ML inference + keyword fallback)
     │   └── api_errors.py                 # Error hierarchy + simulator
     │
     ├── tracing.py                        # Dual tracing setup (Logfire + LangSmith)
