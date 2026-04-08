@@ -587,7 +587,9 @@ def check_onboarding_progress(account_id: str) -> dict:
     sentiment_trend = _sentiment.get_sentiment_trend(account_id).get("trend", "stable")
 
     # Health assessment (tasks + sentiment)
-    if blocked > 0 or len(overdue) >= 3:
+    if pct >= 100:
+        health = "completed"
+    elif blocked > 0 or len(overdue) >= 3:
         health = "stalled"
     elif (len(overdue) > 0 or (pct < 30 and days_since > 7)
           or sentiment_label == "negative"):
@@ -892,7 +894,7 @@ def get_portfolio_summary() -> dict:
     Returns health distribution, account list, and top priority actions.
     """
     health_dist: Dict[str, int] = {
-        "on_track": 0, "at_risk": 0, "stalled": 0,
+        "completed": 0, "on_track": 0, "at_risk": 0, "stalled": 0,
     }
     accounts: List[dict] = []
 

@@ -59,7 +59,7 @@ def api_post(path: str, timeout: int = 120, **kwargs):
 def health_badge(status: str) -> str:
     """Return a colored badge for health status."""
     colors = {
-        "on_track": "🟢", "at_risk": "🟡", "stalled": "🔴",
+        "completed": "✅", "on_track": "🟢", "at_risk": "🟡", "stalled": "🔴",
         "blocked": "🔴", "escalated": "🟡",
     }
     return f"{colors.get(status, '⚪')} {status.replace('_', ' ').title()}"
@@ -355,12 +355,13 @@ elif page == "Portfolio Overview":
     else:
         # Row 1: Health distribution metrics
         dist = data.get("health_distribution", {})
-        c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric("On Track", dist.get("on_track", 0))
-        c2.metric("At Risk", dist.get("at_risk", 0))
-        c3.metric("Stalled", dist.get("stalled", 0))
-        c4.metric("Blocked", dist.get("blocked", 0))
-        c5.metric("Escalated", dist.get("escalated", 0))
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
+        c1.metric("Completed", dist.get("completed", 0))
+        c2.metric("On Track", dist.get("on_track", 0))
+        c3.metric("At Risk", dist.get("at_risk", 0))
+        c4.metric("Stalled", dist.get("stalled", 0))
+        c5.metric("Blocked", dist.get("blocked", 0))
+        c6.metric("Escalated", dist.get("escalated", 0))
 
         st.markdown("---")
 

@@ -646,7 +646,7 @@ async def get_portfolio_summary():
     from app.integrations import provisioning
 
     health_dist: dict[str, int] = {
-        "on_track": 0, "at_risk": 0, "stalled": 0,
+        "completed": 0, "on_track": 0, "at_risk": 0, "stalled": 0,
         "blocked": 0, "escalated": 0,
     }
     accounts: list[dict] = []
