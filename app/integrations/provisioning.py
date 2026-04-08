@@ -686,22 +686,30 @@ def identify_onboarding_risks(account_id: str) -> dict:
             "recommendation": "Escalate to CS management — customer may need additional support",
         })
 
-    # Risk: customer actions overdue
+    # Risk: overdue tasks (any owner)
     today_str = today.strftime("%Y-%m-%d")
-    overdue_customer = [
+    overdue_tasks = [
         t for t in tasks
-        if t.owner == "customer"
-        and t.due_date and t.due_date < today_str
+        if t.due_date and t.due_date < today_str
         and t.status in [TaskStatus.PENDING, TaskStatus.IN_PROGRESS]
     ]
-    for t in overdue_customer:
-        risks.append({
-            "severity": "medium",
-            "risk": f"Customer action overdue: {t.name}",
-            "detail": f"Due {t.due_date}, still {t.status.value}",
-            "task_id": t.task_id,
-            "recommendation": "Send task reminder to customer contact",
-        })
+    for t in overdue_tasks:
+        if t.owner == "customer":
+            risks.append({
+                "severity": "medium",
+                "risk": f"Customer action overdue: {t.name}",
+                "detail": f"Due {t.due_date}, still {t.status.value}",
+                "task_id": t.task_id,
+                "recommendation": "Send task reminder to customer contact",
+            })
+        else:
+            risks.append({
+                "severity": "medium",
+                "risk": f"CS action overdue: {t.name}",
+                "detail": f"Due {t.due_date}, still {t.status.value}",
+                "task_id": t.task_id,
+                "recommendation": f"Follow up with {t.owner} to complete this task",
+            })
 
     # Risk: negative customer sentiment (predictive signal)
     from app.integrations import sentiment as _sentiment
