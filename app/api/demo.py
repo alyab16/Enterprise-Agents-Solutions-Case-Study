@@ -900,11 +900,15 @@ async def chat_with_agent(req: ChatRequest):
     """Chat with the CS assistant agent (retains conversation history)."""
     from app.agent.onboarding_agent import cs_assistant_agent
     from app.agent.dependencies import OnboardingDeps
+    from app.integrations import provisioning
 
     deps = OnboardingDeps(account_id=req.account_id)
 
     # Retrieve prior conversation history for this session
     message_history = _CHAT_SESSIONS.get(req.session_id)
+
+    # Track whether the account was already provisioned before this turn
+    was_provisioned = provisioning.is_provisioned(req.account_id)
 
     result = await cs_assistant_agent.run(
         req.message,
@@ -914,6 +918,23 @@ async def chat_with_agent(req: ChatRequest):
 
     # Store updated history for next turn
     _CHAT_SESSIONS[req.session_id] = result.all_messages()
+
+    # Sync dashboard: if the agent provisioned the account during this chat
+    # turn, store in _ALL_RUN_RESULTS so Dashboard/Portfolio reflect it.
+    # (Non-provisioned accounts are already picked up by active-onboardings
+    # from the provisioning store.)
+    if provisioning.is_provisioned(req.account_id) and not was_provisioned:
+        scenario_name = ""
+        for s in ALL_SCENARIOS:
+            if s["id"] == req.account_id:
+                scenario_name = s["name"]
+                break
+        _ALL_RUN_RESULTS[req.account_id] = {
+            "account_id": req.account_id,
+            "decision": "PROCEED",
+            "summary": result.output[:200] if result.output else "",
+            "scenario_name": scenario_name,
+        }
 
     return {"response": result.output, "account_id": req.account_id}
 
