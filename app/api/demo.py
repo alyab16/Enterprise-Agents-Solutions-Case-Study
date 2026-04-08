@@ -910,8 +910,14 @@ async def chat_with_agent(req: ChatRequest):
     # Track whether the account was already provisioned before this turn
     was_provisioned = provisioning.is_provisioned(req.account_id)
 
+    # Stamp each turn with the active account so the agent always has an
+    # explicit anchor in the conversation history. This prevents it from
+    # recalling data for a previously-discussed account when the user
+    # switches context (e.g., ENTERPRISE-009 → ACME-001).
+    stamped_message = f"[Active account: {req.account_id}]\n{req.message}"
+
     result = await cs_assistant_agent.run(
-        req.message,
+        stamped_message,
         deps=deps,
         message_history=message_history,
     )
@@ -929,10 +935,15 @@ async def chat_with_agent(req: ChatRequest):
             if s["id"] == req.account_id:
                 scenario_name = s["name"]
                 break
+        # Extract a short summary: first non-empty paragraph of the response,
+        # capped at 300 characters so the dashboard card stays readable.
+        _raw = result.output or ""
+        _first_para = next((p.strip() for p in _raw.split("\n\n") if p.strip()), _raw)
+        _summary = _first_para if len(_first_para) <= 300 else _first_para[:297] + "..."
         _ALL_RUN_RESULTS[req.account_id] = {
             "account_id": req.account_id,
             "decision": "PROCEED",
-            "summary": result.output[:200] if result.output else "",
+            "summary": _summary,
             "scenario_name": scenario_name,
         }
 

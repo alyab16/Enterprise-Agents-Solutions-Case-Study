@@ -88,6 +88,8 @@ if "pending_prompt" not in st.session_state:
     st.session_state.pending_prompt = None
 if "dismissed_actions" not in st.session_state:
     st.session_state.dismissed_actions = set()
+if "selected_account_id" not in st.session_state:
+    st.session_state.selected_account_id = "ACME-001"
 
 
 # ---------------------------------------------------------------------------
@@ -596,12 +598,15 @@ elif page == "Chat with Agent":
     st.title("CS Assistant Chat")
     st.caption("Ask about onboarding status, risks, or request actions.")
 
-    # Account context — dropdown from known scenarios
+    # Account context — dropdown from known scenarios, persisted across page switches
     _scenario_ids = [
         "ACME-001", "BETA-002", "GAMMA-003", "DELETED-004", "MISSING-999",
         "FOREX-005", "PARTIAL-006", "STARTER-007", "GROWTH-008", "ENTERPRISE-009",
     ]
-    account_id = st.sidebar.selectbox("Account Context", _scenario_ids, index=0)
+    _saved_index = _scenario_ids.index(st.session_state.selected_account_id) \
+        if st.session_state.selected_account_id in _scenario_ids else 0
+    account_id = st.sidebar.selectbox("Account Context", _scenario_ids, index=_saved_index)
+    st.session_state.selected_account_id = account_id
 
     # Display chat history
     for msg in st.session_state.messages:
