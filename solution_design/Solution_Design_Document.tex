@@ -86,7 +86,8 @@ The solution implements an \textbf{AI-powered automation agent} that orchestrate
 \textbf{(1)} Webhook with \texttt{account\_id} + \texttt{correlation\_id}
 \textbf{(2)} Fetch account, then user/opportunity in parallel; chain sequentially: Opp.ContractId $\rightarrow$ SF Contract $\rightarrow$ CLM (via salesforce\_contract\_id) $\rightarrow$ Invoice (via clmContractRef)
 \textbf{(3)} \texttt{validate\_business\_rules} + \texttt{check\_financial\_alignment}
-\textbf{(4)} PROCEED $\rightarrow$ provision + monitor; BLOCK/ESCALATE $\rightarrow$ notify, remediate, and optionally re-run.
+\textbf{(4)} PROCEED $\rightarrow$ provision + notify; BLOCK/ESCALATE $\rightarrow$ notify, remediate, and optionally re-run
+\textbf{(5)} PROCEED only: mandatory \texttt{check\_onboarding\_progress} + \texttt{identify\_onboarding\_risks} + \texttt{get\_customer\_sentiment} for post-provisioning risk and sentiment assessment.
 }
 \end{minipage}
 
@@ -127,7 +128,7 @@ The agent leverages \textbf{OpenAI GPT-4o-mini} (configurable via \texttt{OPENAI
 \item Post-provisioning: monitors progress, detects risks, sends reminders, escalates stalled onboardings.
 \item Portfolio management: aggregated alerts across accounts, suggested actions with approve/dismiss, batch reminders.
 \item Remediation loop: the CS assistant can simulate source-system fixes (deal closed, contract executed, invoice paid, missing record created) and safely re-run onboarding from BLOCK/ESCALATE into PROCEED.
-\item Sentiment analysis: ML-powered scoring of customer interactions via DistilBERT (PyTorch + HuggingFace) with trend detection; negative sentiment shifts health to at\_risk and triggers proactive outreach suggestions.
+\item Sentiment analysis: ML-powered scoring of customer interactions via DistilBERT (PyTorch + HuggingFace) with trend detection; runs as a mandatory step (step 5) after every provisioning alongside risk assessment; negative sentiment shifts health to at\_risk and triggers proactive outreach suggestions.
 \item Product assistance: looks up tier configuration (features, limits, storage), SLA details, contractual terms, and implementation prerequisites from CLM and provisioning data.
 \end{enumerate}
 \end{minipage}

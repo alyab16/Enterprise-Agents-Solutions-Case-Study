@@ -55,7 +55,7 @@ CS Assistant Agent (Pydantic AI — free-form text, shares all 28 tools)
   └── Interactive chat for CS team to query status, identify risks, manage portfolio, and take batch actions
 ```
 
-The agent decides **what to call, in what order, and how many times** based on tool results. Adding a new capability means registering a new `@agent.tool` — zero changes to orchestration logic. Sentiment analysis acts as a **predictive signal** — negative sentiment can flag an account as at-risk before task-level metrics show problems.
+The agent decides **what to call, in what order, and how many times** based on tool results. Adding a new capability means registering a new `@agent.tool` — zero changes to orchestration logic. The workflow follows 5 mandatory steps for PROCEED accounts: **Gather Data → Validate → Decide → Act → Assess Risks & Sentiment**. Risk and sentiment assessment (`check_onboarding_progress`, `identify_onboarding_risks`, `get_customer_sentiment`) runs after every provisioning to detect post-provisioning risks and customer dissatisfaction — acting as a **predictive signal** that can flag an account as at-risk before task-level metrics show problems.
 
 Each tool is also defined as a **FastMCP server** in `app/mcp/`, ready for extraction to standalone MCP services.
 
@@ -168,10 +168,14 @@ flowchart LR
         N_EMAIL["send_email\n(CS team summary)"]
         N_WEL["send_customer_welcome\n(welcome email)"]
   end
- subgraph MONITOR["Post-provisioning monitoring"]
+ subgraph ASSESS["Step 5 · ASSESS RISKS & SENTIMENT (mandatory for PROCEED)"]
     direction LR
         MON_PROG["check_onboarding\n_progress"]
         MON_RISK["identify_onboarding\n_risks"]
+        MON_SENT["get_customer\n_sentiment"]
+  end
+ subgraph MONITOR["Post-provisioning actions"]
+    direction LR
         MON_REM["send_task_reminder"]
         MON_ESC["escalate_stalled\n_onboarding"]
         MON_UPD["update_onboarding\n_task"]
@@ -241,7 +245,9 @@ flowchart LR
     DECIDE -- all clear\n(no issues) --> ACT_P
     ACT_B --> OUTPUT
     ACT_E --> OUTPUT
-    ACT_P -- post-provisioning --> MONITOR
+    ACT_P -- post-provisioning --> ASSESS
+    ASSESS --> MONITOR
+    ASSESS --> OUTPUT
     MONITOR --> OUTPUT
     PORTFOLIO -. "portfolio-wide\n(CS assistant)" .-> OUTPUT
     OUTPUT --> REPORTS
@@ -284,6 +290,7 @@ flowchart LR
      MCP_NOT:::mcp
      MCP_VAL:::mcp
      MCP_SENT:::mcp
+     MON_SENT:::monitor
      MON_PROG:::monitor
      MON_RISK:::monitor
      MON_REM:::monitor
@@ -323,6 +330,8 @@ The agent makes decisions based on three factors:
 2. **Violations** (`violations`): Business rule failures (missing data, invalid states) → **BLOCK**
 3. **Warnings** (`warnings`): Non-critical issues (missing optional fields, FX gaps, underpayment) → **ESCALATE**
 4. **All Clear**: No errors, violations, or warnings → **PROCEED**
+
+For **PROCEED** accounts, the agent then runs mandatory risk and sentiment assessment (step 5): `check_onboarding_progress`, `identify_onboarding_risks`, and `get_customer_sentiment`. Findings are included in the final `OnboardingResult`.
 
 ## 🚀 Quick Start
 
