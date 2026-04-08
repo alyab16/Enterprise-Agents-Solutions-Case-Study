@@ -150,12 +150,13 @@ system, and a business rule validation engine. Use them as follows:
    you MUST run these assessments. They detect post-provisioning risks and
    customer dissatisfaction signals:
 
-   a) Call `check_onboarding_progress` with the account_id — get completion %,
-      task breakdown, health_status
-   b) Call `identify_onboarding_risks` with the account_id — detect risks like
-      customer not logged in, SSO not configured, tasks blocked/stalled
-   c) Call `get_customer_sentiment` with the account_id — get sentiment score,
-      label, and trend from customer interactions
+   a) Call `check_onboarding_progress` (no args — uses onboarding context) —
+      get completion %, task breakdown, health_status
+   b) Call `identify_onboarding_risks` (no args — uses onboarding context) —
+      detect risks like customer not logged in, SSO not configured,
+      tasks blocked/stalled
+   c) Call `get_customer_sentiment` (no args — uses onboarding context) —
+      get sentiment score, label, and trend from customer interactions
 
    Include findings from ALL three tools in your OnboardingResult: update
    risk_level based on identified risks, add risk items to warnings if any
@@ -484,7 +485,6 @@ async def validate_business_rules(
 @onboarding_agent.tool
 async def provision_account(
     ctx: RunContext[OnboardingDeps],
-    account_id: str,
     tier: str = "Starter",
     customer_name: str = "Customer",
 ) -> dict:
@@ -493,6 +493,7 @@ async def provision_account(
 
     ONLY call this when the decision is PROCEED (no violations, no API errors).
 
+    Uses the account ID from the current onboarding context automatically.
     Creates a tenant with: tenant ID, API credentials, admin URL, and a full
     onboarding task checklist (14 tasks). The tier determines features and limits:
     - Enterprise: SSO, custom reports, 100 users, 500GB
@@ -500,6 +501,8 @@ async def provision_account(
     - Starter: basic reports, 5 users, 25GB
     """
     from app.integrations import provisioning
+
+    account_id = ctx.deps.account_id
 
     log_event("tool.provisioning.provision", account_id=account_id,
               tier=tier, correlation_id=ctx.deps.correlation_id)
@@ -731,16 +734,17 @@ async def convert_currency(
 @onboarding_agent.tool
 async def check_onboarding_progress(
     ctx: RunContext[OnboardingDeps],
-    account_id: str,
 ) -> dict:
     """
-    Get a dashboard view of onboarding progress for a provisioned account.
+    Get a dashboard view of onboarding progress for the current account.
 
+    Uses the account ID from the current context automatically.
     Returns completion %, task breakdown by status, overdue/blocked counts,
     days since provisioning, and a health_status (on_track / at_risk / stalled).
     """
     from app.integrations import provisioning
 
+    account_id = ctx.deps.account_id
     log_event("tool.provisioning.check_progress", account_id=account_id,
               correlation_id=ctx.deps.correlation_id)
     return provisioning.check_onboarding_progress(account_id)
@@ -749,17 +753,18 @@ async def check_onboarding_progress(
 @onboarding_agent.tool
 async def identify_onboarding_risks(
     ctx: RunContext[OnboardingDeps],
-    account_id: str,
 ) -> dict:
     """
-    Detect risks and problems needing CS attention for a provisioned account.
+    Detect risks and problems needing CS attention for the current account.
 
+    Uses the account ID from the current context automatically.
     Checks for: customer not logged in after 3 days, SSO not configured after
     kickoff, tasks blocked, onboarding stalling (<30% after 7 days), customer
     actions overdue.
     """
     from app.integrations import provisioning
 
+    account_id = ctx.deps.account_id
     log_event("tool.provisioning.identify_risks", account_id=account_id,
               correlation_id=ctx.deps.correlation_id)
     return provisioning.identify_onboarding_risks(account_id)
@@ -768,7 +773,6 @@ async def identify_onboarding_risks(
 @onboarding_agent.tool
 async def send_task_reminder(
     ctx: RunContext[OnboardingDeps],
-    account_id: str,
     task_id: str,
     recipient: str = "",
     message: str = "",
@@ -776,10 +780,12 @@ async def send_task_reminder(
     """
     Send a reminder about a pending onboarding task to the assigned owner.
 
+    Uses the account ID from the current context automatically.
     Use when a task is overdue or at risk of being missed.
     """
     from app.integrations import provisioning
 
+    account_id = ctx.deps.account_id
     log_event("tool.provisioning.send_reminder", account_id=account_id,
               task_id=task_id, correlation_id=ctx.deps.correlation_id)
     return provisioning.send_task_reminder(account_id, task_id, recipient, message)
@@ -788,17 +794,18 @@ async def send_task_reminder(
 @onboarding_agent.tool
 async def escalate_stalled_onboarding(
     ctx: RunContext[OnboardingDeps],
-    account_id: str,
     reason: str = "",
 ) -> dict:
     """
     Escalate a stalled onboarding to CS management.
 
+    Uses the account ID from the current context automatically.
     Posts to #cs-onboarding-escalations with progress details. Use when
     onboarding is stalled (blocked tasks, low completion after many days).
     """
     from app.integrations import provisioning
 
+    account_id = ctx.deps.account_id
     log_event("tool.provisioning.escalate", account_id=account_id,
               correlation_id=ctx.deps.correlation_id)
     return provisioning.escalate_stalled_onboarding(account_id, reason)
@@ -807,7 +814,6 @@ async def escalate_stalled_onboarding(
 @onboarding_agent.tool
 async def update_onboarding_task(
     ctx: RunContext[OnboardingDeps],
-    account_id: str,
     task_id: str,
     status: str,
     notes: str = "",
@@ -815,11 +821,13 @@ async def update_onboarding_task(
     """
     Update the status of an onboarding task.
 
+    Uses the account ID from the current context automatically.
     Valid statuses: pending, in_progress, completed, blocked, skipped.
     Use to mark tasks as done, flag blockers, or skip inapplicable tasks.
     """
     from app.integrations import provisioning
 
+    account_id = ctx.deps.account_id
     log_event("tool.provisioning.update_task", account_id=account_id,
               task_id=task_id, status=status,
               correlation_id=ctx.deps.correlation_id)
@@ -831,16 +839,17 @@ async def update_onboarding_task(
 @onboarding_agent.tool
 async def simulate_issue_resolution(
     ctx: RunContext[OnboardingDeps],
-    account_id: str,
 ) -> dict:
     """
     Simulate CS resolving blockers or warnings in the source systems.
 
+    Uses the account ID from the current context automatically.
     Use this before re-running onboarding when a blocked or escalated account
     needs to move forward in the demo environment.
     """
     from app.integrations import resolution
 
+    account_id = ctx.deps.account_id
     log_event("tool.resolution.simulate", account_id=account_id,
               correlation_id=ctx.deps.correlation_id)
     return resolution.simulate_issue_resolution(account_id)
@@ -1090,11 +1099,11 @@ async def lookup_product_info(
 @onboarding_agent.tool
 async def get_customer_sentiment(
     ctx: RunContext[OnboardingDeps],
-    account_id: str,
 ) -> dict:
     """
-    Get the customer sentiment score and summary for an account.
+    Get the customer sentiment score and summary for the current account.
 
+    Uses the account ID from the current context automatically.
     Analyses inbound customer interactions (emails, chat, support tickets)
     and returns a score (-1.0 to 1.0), label (positive/neutral/negative),
     and trend (improving/stable/declining). Negative sentiment is a
@@ -1102,6 +1111,7 @@ async def get_customer_sentiment(
     """
     from app.integrations import sentiment
 
+    account_id = ctx.deps.account_id
     log_event("tool.sentiment.score", account_id=account_id,
               correlation_id=ctx.deps.correlation_id)
 
@@ -1113,7 +1123,6 @@ async def get_customer_sentiment(
 @onboarding_agent.tool
 async def log_customer_interaction(
     ctx: RunContext[OnboardingDeps],
-    account_id: str,
     channel: str,
     direction: str,
     author: str,
@@ -1122,8 +1131,9 @@ async def log_customer_interaction(
     """
     Record a customer interaction for sentiment tracking.
 
+    Uses the account ID from the current context automatically.
+
     Args:
-        account_id: The account this interaction belongs to.
         channel: Communication channel (email, chat, support_ticket, call).
         direction: "inbound" (from customer) or "outbound" (from CS team).
         author: Who sent it — "customer" or "cs_team".
@@ -1131,6 +1141,7 @@ async def log_customer_interaction(
     """
     from app.integrations import sentiment
 
+    account_id = ctx.deps.account_id
     log_event("tool.sentiment.log_interaction", account_id=account_id,
               channel=channel, correlation_id=ctx.deps.correlation_id)
     return sentiment.add_interaction(account_id, channel, direction, author, text)

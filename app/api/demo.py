@@ -117,6 +117,13 @@ async def run_demo_scenario(account_id: str, generate_report: bool = False):
 
     notifications = get_sent_notifications(account_id)
 
+    # Look up scenario name for dashboard display
+    scenario_name = ""
+    for s in ALL_SCENARIOS:
+        if s["id"] == account_id:
+            scenario_name = s["name"]
+            break
+
     response = {
         "account_id": account_id,
         "decision": result.get("decision"),
@@ -128,6 +135,7 @@ async def run_demo_scenario(account_id: str, generate_report: bool = False):
         "notifications_sent": notifications,
         "provisioning": result.get("provisioning"),
         "summary": result.get("human_summary"),
+        "scenario_name": scenario_name,
     }
 
     # Store result for dashboard
@@ -497,32 +505,47 @@ async def escalate_onboarding(account_id: str, reason: str = ""):
     return provisioning.escalate_stalled_onboarding(account_id, reason)
 
 
-@router.get("/active-onboardings")
-async def list_active_onboardings():
-    """List all onboarding run results — provisioned AND blocked/escalated."""
+def _build_proceed_entry(account_id: str, run: dict | None = None) -> dict:
+    """Build a PROCEED onboarding entry from live provisioning state."""
     from app.integrations import provisioning
 
+    progress = provisioning.check_onboarding_progress(account_id)
+    return {
+        "account_id": account_id,
+        "decision": "PROCEED",
+        "scenario_name": (run or {}).get("scenario_name", ""),
+        "tenant_id": progress.get("tenant_id"),
+        "tier": progress.get("tier"),
+        "completion_percentage": progress.get("completion_percentage", 0),
+        "health_status": progress.get("health_status", "on_track"),
+        "days_since_provisioning": progress.get("days_since_provisioning", 0),
+        "overdue_count": len(progress.get("overdue_tasks", [])),
+        "blocked_count": progress.get("task_breakdown", {}).get("blocked", 0),
+        "sentiment": progress.get("sentiment", {}),
+        "summary": (run or {}).get("summary", ""),
+    }
+
+
+@router.get("/active-onboardings")
+async def list_active_onboardings():
+    """List all onboarding run results — provisioned AND blocked/escalated.
+
+    Merges two sources so accounts onboarded via chat also appear:
+    1. _ALL_RUN_RESULTS  — populated by /run/{account_id} and execute-action
+    2. provisioning store — populated by the provision_account tool (any agent)
+    """
+    from app.integrations import provisioning
+
+    seen: set[str] = set()
     results = []
+
+    # 1) Accounts tracked in _ALL_RUN_RESULTS
     for account_id, run in _ALL_RUN_RESULTS.items():
+        seen.add(account_id)
         decision = run.get("decision", "UNKNOWN")
 
-        if decision == "PROCEED":
-            # Get live progress from provisioning system
-            progress = provisioning.check_onboarding_progress(account_id)
-            results.append({
-                "account_id": account_id,
-                "decision": decision,
-                "scenario_name": run.get("scenario_name", ""),
-                "tenant_id": progress.get("tenant_id"),
-                "tier": progress.get("tier"),
-                "completion_percentage": progress.get("completion_percentage", 0),
-                "health_status": progress.get("health_status", "on_track"),
-                "days_since_provisioning": progress.get("days_since_provisioning", 0),
-                "overdue_count": len(progress.get("overdue_tasks", [])),
-                "blocked_count": progress.get("task_breakdown", {}).get("blocked", 0),
-                "sentiment": progress.get("sentiment", {}),
-                "summary": run.get("summary", ""),
-            })
+        if decision == "PROCEED" or provisioning.is_provisioned(account_id):
+            results.append(_build_proceed_entry(account_id, run))
         else:
             violations = run.get("violations", {})
             warnings = run.get("warnings", {})
@@ -543,6 +566,12 @@ async def list_active_onboardings():
                 "warnings": warnings,
                 "summary": run.get("summary", ""),
             })
+
+    # 2) Provisioned accounts not in _ALL_RUN_RESULTS (e.g. onboarded via chat)
+    for active in provisioning.get_all_active_onboardings():
+        aid = active["account_id"]
+        if aid not in seen:
+            results.append(_build_proceed_entry(aid))
 
     return {"onboardings": results}
 
@@ -611,8 +640,8 @@ async def get_alerts():
 async def get_portfolio_summary():
     """Get aggregated portfolio stats + priority actions.
 
-    Derives accounts from _ALL_RUN_RESULTS (the same source as the Dashboard)
-    so both views always show identical completion percentages.
+    Merges _ALL_RUN_RESULTS with the provisioning store so accounts
+    onboarded via chat also appear in the portfolio view.
     """
     from app.integrations import provisioning
 
@@ -621,18 +650,20 @@ async def get_portfolio_summary():
         "blocked": 0, "escalated": 0,
     }
     accounts: list[dict] = []
+    seen: set[str] = set()
 
     for account_id, run in _ALL_RUN_RESULTS.items():
+        seen.add(account_id)
         decision = run.get("decision", "UNKNOWN")
 
-        if decision == "PROCEED":
+        if decision == "PROCEED" or provisioning.is_provisioned(account_id):
             progress = provisioning.check_onboarding_progress(account_id)
             health = progress.get("health_status", "on_track")
             if health in health_dist:
                 health_dist[health] += 1
             accounts.append({
                 "account_id": account_id,
-                "decision": decision,
+                "decision": "PROCEED",
                 "tier": progress.get("tier"),
                 "health_status": health,
                 "completion_percentage": progress.get("completion_percentage", 0),
@@ -654,6 +685,26 @@ async def get_portfolio_summary():
                 "blocked_count": 0,
                 "tier": None,
                 "scenario_name": run.get("scenario_name", ""),
+            })
+
+    # Include provisioned accounts not in _ALL_RUN_RESULTS (e.g. via chat)
+    for active in provisioning.get_all_active_onboardings():
+        aid = active["account_id"]
+        if aid not in seen:
+            progress = provisioning.check_onboarding_progress(aid)
+            health = progress.get("health_status", "on_track")
+            if health in health_dist:
+                health_dist[health] += 1
+            accounts.append({
+                "account_id": aid,
+                "decision": "PROCEED",
+                "tier": progress.get("tier"),
+                "health_status": health,
+                "completion_percentage": progress.get("completion_percentage", 0),
+                "days_since_provisioning": progress.get("days_since_provisioning", 0),
+                "overdue_count": len(progress.get("overdue_tasks", [])),
+                "blocked_count": progress.get("task_breakdown", {}).get("blocked", 0),
+                "scenario_name": "",
             })
 
     # Priority actions from provisioned accounts
