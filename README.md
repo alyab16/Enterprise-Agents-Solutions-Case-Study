@@ -443,8 +443,6 @@ LOG_DIR=logs           # Directory for structured JSON logs
 ENVIRONMENT=development
 ```
 
-> **Note**: The agent works without tracing keys. OpenAI is recommended for best results; without it, the agent falls back to Ollama (requires a local Ollama server). Currency conversion uses the free Frankfurter API (ECB rates) — no key needed.
-
 ---
 
 ## ▶️ Running the Application
@@ -523,101 +521,7 @@ POST /demo/disable-random-errors
 | `rate_limit_rate` | Rate limit exceeded | 429 |
 | `server_error_rate` | Server errors | 500 |
 
-## 🔧 Error Handling Architecture
-
-```mermaid
-%%{
-init: {
-  "theme": "base",
-  "themeVariables": {
-    "background": "#ffffff",
-    "primaryColor": "#f7f9fc",
-    "primaryBorderColor": "#c7d0e0",
-    "lineColor": "#6b7a90",
-    "primaryTextColor": "#1f2937",
-    "clusterBkg": "#f2f5fb",
-    "clusterBorder": "#d6deeb",
-    "fontSize": "14px"
-  }
-}
-}%%
-
-flowchart TD
-
-%% ------------ INTEGRATIONS ------------
-subgraph INT["🔌 Integration Layer"]
-SF_CALL["Salesforce API Call"]
-CLM_CALL["CLM API Call"]
-NS_CALL["NetSuite API Call"]
-end
-
-%% ------------ ERROR SIMULATOR ------------
-subgraph SIML["🎲 Error Simulation Layer"]
-SIM["ERROR_SIMULATOR<br/>maybe_raise_error"]
-
-AUTH["🔐 Auth Error"]
-RATE["⏳ Rate Limit"]
-VAL["⚠️ Validation Error"]
-SRV["💥 Server Error"]
-end
-
-%% ------------ ERROR HANDLING ------------
-subgraph ERR["🛡️ Error Handling Pipeline"]
-CATCH_SPECIFIC["Catch Typed Errors"]
-CATCH_API["Catch Generic APIError"]
-PAYLOAD["Create Structured Error Payload"]
-end
-
-%% ------------ STATE ------------
-subgraph STATE["🧠 Agent State"]
-API_ERRORS["api_errors"]
-VIOLATIONS["violations"]
-DECISION{"Decision Engine"}
-end
-
-BLOCK["🚫 BLOCK"]
-
-%% FLOWS
-SF_CALL --> SIM
-CLM_CALL --> SIM
-NS_CALL --> SIM
-
-SIM --> AUTH
-SIM --> RATE
-SIM --> VAL
-SIM --> SRV
-
-AUTH --> CATCH_SPECIFIC
-RATE --> CATCH_SPECIFIC
-VAL --> CATCH_SPECIFIC
-SRV --> CATCH_SPECIFIC
-
-CATCH_SPECIFIC --> CATCH_API --> PAYLOAD
-
-PAYLOAD --> API_ERRORS
-API_ERRORS --> DECISION
-VIOLATIONS --> DECISION
-
-DECISION -->|api_errors > 0| BLOCK
-
-%% STYLES
-
-classDef infra fill:#f1ecff,stroke:#8b7cf6,stroke-width:2px
-classDef simulator fill:#fff4e5,stroke:#f59e0b,stroke-width:2px
-classDef error fill:#fde8e8,stroke:#e5484d,stroke-width:2px
-classDef handler fill:#e8f0ff,stroke:#5b8def,stroke-width:2px
-classDef state fill:#e6f7ee,stroke:#2e9d69,stroke-width:2px
-classDef decision fill:#fff7db,stroke:#d4a017,stroke-width:2px
-classDef danger fill:#fde8e8,stroke:#e5484d,stroke-width:2px
-
-class SF_CALL,CLM_CALL,NS_CALL infra
-class SIM simulator
-class AUTH,RATE,VAL,SRV error
-class CATCH_SPECIFIC,CATCH_API,PAYLOAD handler
-class API_ERRORS,VIOLATIONS state
-class DECISION decision
-class BLOCK danger
-```
+## 🔧 Error Handling
 
 ### Key Error Handling Features
 
@@ -649,16 +553,6 @@ When an account is provisioned, the agent automatically creates a **granular onb
 | **CS Action** | CS Team | Schedule kickoff call, configure SSO, create custom reports |
 | **Customer Action** | Customer | Verify login, complete platform tour, invite team members |
 | **Technical** | CS Team | SSO integration, API setup |
-
-### Task Endpoints
-
-| Method | Endpoint | Description |
-|--------|-----------|-------------|
-| GET | `/demo/tasks/{account_id}` | Retrieve all onboarding tasks for an account |
-| GET | `/demo/tasks/{account_id}/pending?owner={owner}` | Get pending tasks (optionally filter by owner: `cs_team`, `customer`, `system`) |
-| GET | `/demo/tasks/{account_id}/overdue` | Identify overdue tasks for proactive follow-up |
-| GET | `/demo/tasks/{account_id}/next-actions` | Return the next actionable tasks in the workflow |
-| PUT | `/demo/tasks/{account_id}/{task_id}?status=completed&completed_by={email}` | Update task status when completed |
 
 ### Example Task Flow
 
@@ -714,16 +608,6 @@ When negative sentiment is detected, the proactive alerts system generates a **"
 | `get_customer_sentiment` | Returns aggregate score, label, trend, and recent interaction scores for an account |
 | `log_customer_interaction` | Records a new interaction (email/chat/support_ticket/call) for ongoing sentiment tracking |
 
-### Sentiment API Endpoint
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/demo/sentiment/{account_id}` | Get sentiment score, trend, and interaction details |
-
-### MCP Server
-
-Sentiment tools are mirrored as a **FastMCP server** (`app/mcp/sentiment_server.py`) with three tools: `get_sentiment_score`, `get_sentiment_trend`, and `log_interaction`.
-
 ## 💬 CS Assistant & Streamlit UI
 
 The project includes a **dual-agent architecture** and a **Streamlit UI** for interactive use:
@@ -776,27 +660,6 @@ The assistant retains conversation history across messages within a session.
 | `get_portfolio_overview` | Aggregated health distribution, account list with completion %, and top priority actions across all accounts |
 | `get_all_alerts` | All risk alerts across the portfolio, sorted by severity (critical > high > medium > low) |
 | `batch_send_reminders` | Sends reminders to all accounts matching a filter (overdue tasks, no login, or stalled onboardings) |
-
-### CS Monitoring Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/demo/progress/{account_id}` | Onboarding progress dashboard |
-| GET | `/demo/risks/{account_id}` | Risk detection for active onboarding |
-| POST | `/demo/remind/{account_id}/{task_id}` | Send task reminder |
-| POST | `/demo/escalate/{account_id}` | Escalate stalled onboarding |
-| GET | `/demo/active-onboardings` | All onboarding results with progress |
-| GET | `/demo/sentiment/{account_id}` | Customer sentiment score and trend |
-| POST | `/demo/chat` | Chat with CS assistant agent |
-
-### Portfolio & Proactive Alerts Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/demo/alerts` | Aggregated risk alerts across all accounts (provisioned + blocked/escalated) |
-| GET | `/demo/portfolio-summary` | Portfolio overview with health distribution, account list, and priority actions |
-| GET | `/demo/suggested-actions` | Smart suggested actions with approve/dismiss across all accounts |
-| POST | `/demo/execute-action` | Execute a suggested action (send reminder, escalate, simulate remediation, re-run onboarding, etc.) |
 
 ## 📁 Project Structure
 
@@ -891,26 +754,6 @@ The following features would enhance the agent for production use:
 | **No customer-facing portal** | Customer can't see their onboarding progress | Build React dashboard showing task checklist and status |
 | **Single workflow execution** | Agent runs once per trigger | Add retry/resume capability for failed workflows |
 | **In-memory state** | Provisioning/chat history lost on restart | Add persistent database (PostgreSQL) for production |
-
-### Proactive vs Passive Features
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Invoice overdue warning | ✅ Proactive | Detected during onboarding, triggers ESCALATE |
-| FX mismatch detection | ✅ Proactive | Live currency conversion reveals deal-value discrepancies |
-| Underpayment detection | ✅ Proactive | Financial alignment check flags gaps > 2% threshold |
-| Contract pending signatures | ✅ Proactive | Warning generated, CS notified via Slack |
-| Risk analysis recommendations | ✅ Proactive | LLM suggests actions before problems escalate |
-| Task overdue detection | ✅ Proactive | CS assistant detects overdue tasks via `identify_onboarding_risks` |
-| Task due date reminders | ✅ Proactive | `send_task_reminder` tool sends reminders to task owners |
-| Proactive alerts panel | ✅ Proactive | Dashboard surfaces urgent items automatically, grouped by account |
-| Suggested actions with approve/dismiss | ✅ Proactive | Risk-derived actions with one-click execution; blocked/escalated accounts now simulate remediation and re-enter the provisioning flow |
-| Portfolio health overview | ✅ Proactive | Aggregated health distribution and priority actions across all accounts |
-| Batch portfolio operations | ✅ Proactive | Send reminders to all overdue/stalled accounts via chat or UI |
-| Customer sentiment analysis | ✅ Proactive | Negative sentiment shifts health to at_risk and triggers check-in call suggestion |
-| Customer action tracking | ⚠️ Passive | Agent can check progress but no auto-detection via webhooks |
-| Escalation to management | ✅ Proactive | `escalate_stalled_onboarding` posts to #cs-onboarding-escalations |
-| Interactive CS dashboard | ✅ Implemented | Streamlit UI with Dashboard, Portfolio, Run Onboarding, and Chat pages |
 
 ### Suggested Enhancements
 
