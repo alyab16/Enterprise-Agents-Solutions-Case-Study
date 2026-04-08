@@ -403,24 +403,43 @@ cp .env.example .env
 Create a `.env` file in the project root (or copy from `.env.example`):
 
 ```env
-# OpenAI (required for GPT-4o; falls back to Ollama if unset)
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini
+# ============================================================
+# OpenAI — Required for best results
+# Get your API key from https://platform.openai.com/api-keys
+# Without this, the agent falls back to a local Ollama model.
+# ============================================================
+OPENAI_API_KEY=sk-your-api-key-here
+OPENAI_MODEL=gpt-4o-mini          # Any OpenAI chat model works here
 
-# LangSmith tracing (optional)
-LANGCHAIN_API_KEY=ls-...
+# ============================================================
+# Ollama — Local model fallback (no API key required)
+# Used automatically when OPENAI_API_KEY is not set.
+# Requires a running Ollama server: https://ollama.com
+# ============================================================
+OLLAMA_MODEL=llama3.2
+
+# ============================================================
+# LangSmith — Optional agent tracing
+# Traces Pydantic AI agent runs, tool calls, and LLM completions
+# via an OpenTelemetry bridge. Get keys: https://smith.langchain.com
+# ============================================================
 LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=ls-your-langsmith-api-key-here
 LANGCHAIN_PROJECT=onboarding-agent
 LANGCHAIN_ENDPOINT=https://api.smith.langchain.com
 
-# Logfire tracing (optional — Pydantic AI native)
+# ============================================================
+# Logfire — Optional Pydantic AI native tracing
+# Provides native visibility into agent reasoning chains and
+# structured output validation. Get token: https://logfire.pydantic.dev
+# ============================================================
 LOGFIRE_TOKEN=
 LOGFIRE_ENVIRONMENT=development
 
-# Logging
-LOG_DIR=logs
-
-# Environment
+# ============================================================
+# Application
+# ============================================================
+LOG_DIR=logs           # Directory for structured JSON logs
 ENVIRONMENT=development
 ```
 
@@ -430,47 +449,27 @@ ENVIRONMENT=development
 
 ## ▶️ Running the Application
 
-### Primary Entry Point (Recommended)
+Two processes must run simultaneously in separate terminals: the **FastAPI backend** and the **Streamlit UI**.
 
-The application is designed to be started via `main.py`, which embeds the Uvicorn server programmatically.
-
-```bash
-# Using uv
-uv run main.py
-```
+### 1. Start the FastAPI Backend
 
 ```bash
-# Using standard Python
-python main.py
+uv run main.py   # uv
+# OR
+python main.py   # pip
 ```
 
-The server will start on:
+Runs on `http://localhost:8000` — interactive API docs at `http://localhost:8000/docs`.
 
-```
-http://localhost:8000
-```
-
-Health check:
-```
-GET /health
-```
-
-Interactive API docs:
-```
-http://localhost:8000/docs
-```
-
----
-
-### Alternative: Uvicorn CLI (Optional)
-
-If you prefer to run the server using the Uvicorn CLI:
+### 2. Start the Streamlit UI (new terminal)
 
 ```bash
-uvicorn main:app --reload
+uv run streamlit run streamlit_app.py   # uv
+# OR
+streamlit run streamlit_app.py          # pip
 ```
 
-> **Note**: `uvicorn` is still required as a dependency even when running `python main.py`, since it is imported programmatically.
+Opens at `http://localhost:8501`. The UI requires the FastAPI backend to be running first.
 
 ---
 
@@ -523,39 +522,6 @@ POST /demo/disable-random-errors
 | `validation_rate` | Validation errors | 400 |
 | `rate_limit_rate` | Rate limit exceeded | 429 |
 | `server_error_rate` | Server errors | 500 |
-
-## 🔌 API Endpoints
-
-### Core Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Health check |
-| POST | `/webhook/onboarding` | Main onboarding trigger |
-| POST | `/debug/onboarding` | Test with custom data |
-
-### Demo Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/demo/scenarios` | List all scenarios |
-| POST | `/demo/run/{account_id}` | Run specific scenario |
-
-### Error Simulation Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/demo/enable-random-errors` | Enable error injection with configurable rates |
-| POST | `/demo/disable-random-errors` | Disable error injection |
-| GET | `/demo/error-simulator-status` | Check current simulator configuration |
-
-### Report Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/demo/reports` | List generated reports |
-| GET | `/demo/reports/{filename}` | Get report content (HTML returned as response body) |
-| GET | `/demo/reports/{filename}/download` | Download report |
 
 ## 🔧 Error Handling Architecture
 
