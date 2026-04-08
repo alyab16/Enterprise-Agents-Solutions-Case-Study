@@ -241,7 +241,7 @@ The agent enforces a two-tier validation system across five domains. \textbf{Vio
 \midrule
 Webhook & Salesforce Flow & \texttt{POST /webhook/onboarding} \\
 Manual & CS Team & \texttt{POST /demo/run/\{account\_id\}} \\
-Batch & Scheduler & \texttt{POST /demo/run-all} \\
+Batch & Scheduler & \texttt{POST /demo/run/\{account\_id\}} (per account) \\
 \bottomrule
 \end{tabularx}
 \end{table}

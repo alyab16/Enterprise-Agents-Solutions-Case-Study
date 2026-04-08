@@ -585,26 +585,6 @@ elif page == "Run Onboarding":
             with st.expander("Raw API Response"):
                 st.json(result)
 
-    # Run All button
-    st.markdown("---")
-    if st.button("Run All Scenarios"):
-        with st.spinner("Running all 10 scenarios (this may take a few minutes)..."):
-            result = api_post("/run-all", timeout=600)
-
-        if result:
-            summary = result.get("summary", {})
-            st.markdown(
-                f"### Results: {summary.get('passed', 0)}/{summary.get('total_scenarios', 0)} passed "
-                f"({summary.get('success_rate', 'N/A')})"
-            )
-
-            for r in result.get("results", []):
-                icon = "✅" if r["passed"] else "❌"
-                st.markdown(
-                    f"{icon} **{r['account_id']}** ({r['scenario_name']}) — "
-                    f"Expected: `{r['expected_decision']}`, "
-                    f"Got: `{r['actual_decision']}`"
-                )
 
 
 # ============================================================================

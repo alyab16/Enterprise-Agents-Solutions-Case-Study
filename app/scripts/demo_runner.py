@@ -6,7 +6,8 @@ This script demonstrates the agent's capabilities by running through
 multiple scenarios and displaying the results in a clear, visual format.
 
 Usage:
-    python -m app.scripts.demo_runner [--scenario SCENARIO_ID] [--all]
+    python -m app.scripts.demo_runner --scenario SCENARIO_ID
+    python -m app.scripts.demo_runner --list
 """
 
 import sys
@@ -205,138 +206,52 @@ def run_scenario(account_id: str, name: str, description: str):
     return result
 
 
-def run_all_scenarios():
-    """Run all demo scenarios."""
-    
-    scenarios = [
-        {
-            "id": "ACME-001",
-            "name": "Happy Path - Full Success",
-            "description": "Enterprise customer with all data in order. Contract signed, invoice paid.",
-        },
-        {
-            "id": "BETA-002",
-            "name": "Blocked - Opportunity Not Won",
-            "description": "Opportunity still in negotiation. Contract in draft. Cannot proceed.",
-        },
-        {
-            "id": "GAMMA-003",
-            "name": "Escalation - Overdue Invoice",
-            "description": "Deal closed but invoice overdue. Needs finance review.",
-        },
-        {
-            "id": "DELETED-004",
-            "name": "Blocked - Deleted Account",
-            "description": "Account marked as deleted in Salesforce.",
-        },
-        {
-            "id": "MISSING-999",
-            "name": "Blocked - Account Not Found",
-            "description": "Account does not exist in any system.",
-        },
-    ]
-    
-    print_header("Enterprise Onboarding Agent Demo")
-    print(f"{Colors.DIM}Running {len(scenarios)} scenarios to demonstrate agent capabilities{Colors.ENDC}")
-    print(f"{Colors.DIM}Timestamp: {datetime.now().isoformat()}{Colors.ENDC}")
-    
-    # Reset all state
-    clear_notifications()
-    reset_provisioning()
-    
-    results = []
-    
-    for scenario in scenarios:
-        result = run_scenario(
-            account_id=scenario["id"],
-            name=scenario["name"],
-            description=scenario["description"],
-        )
-        results.append({
-            "id": scenario["id"],
-            "name": scenario["name"],
-            "decision": result.get("decision"),
-            "risk_level": result.get("risk_analysis", {}).get("risk_level"),
-        })
-        
-        # Pause between scenarios
-        print(f"\n{Colors.DIM}{'─' * 70}{Colors.ENDC}\n")
-    
-    # Summary table
-    print_header("Summary of All Scenarios")
-    
-    print(f"{'Account':<15} {'Scenario':<35} {'Decision':<12} {'Risk':<10}")
-    print(f"{'-' * 15} {'-' * 35} {'-' * 12} {'-' * 10}")
-    
-    for r in results:
-        decision = r.get("decision", "?")
-        if decision == "PROCEED":
-            dec_color = Colors.GREEN
-        elif decision == "ESCALATE":
-            dec_color = Colors.YELLOW
-        else:
-            dec_color = Colors.RED
-        
-        print(f"{r['id']:<15} {r['name'][:35]:<35} {dec_color}{decision:<12}{Colors.ENDC} {r.get('risk_level', 'N/A'):<10}")
-    
-    print()
-
-
 def main():
     parser = argparse.ArgumentParser(
         description="Demo Runner for Enterprise Onboarding Agent",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python -m app.scripts.demo_runner --all              Run all scenarios
     python -m app.scripts.demo_runner --scenario ACME-001    Run specific scenario
-    python -m app.scripts.demo_runner --list             List available scenarios
+    python -m app.scripts.demo_runner --list                 List available scenarios
         """
     )
-    
-    parser.add_argument(
-        "--all", "-a",
-        action="store_true",
-        help="Run all demo scenarios"
-    )
-    
+
     parser.add_argument(
         "--scenario", "-s",
         type=str,
         help="Run a specific scenario by account ID"
     )
-    
+
     parser.add_argument(
         "--list", "-l",
         action="store_true",
         help="List available scenarios"
     )
-    
+
     args = parser.parse_args()
-    
+
+    scenario_map = {
+        "ACME-001": ("Happy Path - Full Success", "Enterprise customer with all data in order. Contract signed, invoice paid."),
+        "BETA-002": ("Blocked - Opportunity Not Won", "Opportunity still in negotiation. Contract in draft. Cannot proceed."),
+        "GAMMA-003": ("Escalation - Overdue Invoice", "Deal closed but invoice overdue. Needs finance review."),
+        "DELETED-004": ("Blocked - Deleted Account", "Account marked as deleted in Salesforce."),
+        "MISSING-999": ("Blocked - Account Not Found", "Account does not exist in any system."),
+        "FOREX-005": ("Escalation - FX Invoice Mismatch", "Invoice in CAD vs USD opportunity. Currency conversion reveals gap beyond 2% threshold."),
+        "PARTIAL-006": ("Escalation - Partial Payment Gap", "Invoice partially paid. 5% underpayment exceeds 2% threshold."),
+        "STARTER-007": ("Proceed - Customer Not Logged In", "All checks pass, provisioned 5 days ago, but customer has not logged in yet."),
+        "GROWTH-008": ("Proceed - Stalled Onboarding", "All checks pass, provisioned 10 days ago, kickoff not done, <30% completion."),
+        "ENTERPRISE-009": ("Proceed - SSO & Blocked Tasks", "All checks pass, provisioned 8 days ago, SSO not configured, customer tasks overdue."),
+    }
+
     if args.list:
         print_header("Available Demo Scenarios")
-        scenarios = [
-            ("ACME-001", "Happy Path", "Full success with provisioning"),
-            ("BETA-002", "Blocked", "Opportunity not won"),
-            ("GAMMA-003", "Escalation", "Overdue invoice"),
-            ("DELETED-004", "Blocked", "Deleted account"),
-            ("MISSING-999", "Blocked", "Account not found"),
-        ]
-        for sid, stype, sdesc in scenarios:
-            print(f"  {Colors.CYAN}{sid:<15}{Colors.ENDC} {stype:<12} {sdesc}")
+        for sid, (sname, sdesc) in scenario_map.items():
+            print(f"  {Colors.CYAN}{sid:<18}{Colors.ENDC} {sname}")
         print()
         return
-    
+
     if args.scenario:
-        scenario_map = {
-            "ACME-001": ("Happy Path - Full Success", "Enterprise customer with all data in order."),
-            "BETA-002": ("Blocked - Opportunity Not Won", "Opportunity in negotiation stage."),
-            "GAMMA-003": ("Escalation - Overdue Invoice", "Invoice is overdue."),
-            "DELETED-004": ("Blocked - Deleted Account", "Account marked as deleted."),
-            "MISSING-999": ("Blocked - Account Not Found", "Account does not exist."),
-        }
-        
         if args.scenario in scenario_map:
             name, desc = scenario_map[args.scenario]
             run_scenario(args.scenario, name, desc)
@@ -345,13 +260,9 @@ Examples:
             print("Use --list to see available scenarios")
             sys.exit(1)
         return
-    
-    if args.all:
-        run_all_scenarios()
-        return
-    
-    # Default: run all
-    run_all_scenarios()
+
+    # Default: show usage
+    parser.print_help()
 
 
 if __name__ == "__main__":

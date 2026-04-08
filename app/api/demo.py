@@ -95,24 +95,8 @@ ERROR_SIMULATION_IDS = {"AUTH-ERROR", "PERM-ERROR", "SERVER-ERROR", "RATE-ERROR"
 # In-memory store for ALL onboarding run results (not just provisioned ones)
 _ALL_RUN_RESULTS: dict[str, dict] = {}
 
-# Map account IDs to post-provisioning simulation profiles
-_SIMULATION_PROFILES = {
-    "STARTER-007": "no_login",
-    "GROWTH-008": "stalled",
-    "ENTERPRISE-009": "blocked_sso",
-}
-
-
 def is_error_simulation_scenario(account_id: str) -> bool:
     return account_id in ERROR_SIMULATION_IDS or account_id.endswith("-ERROR")
-
-
-def _apply_simulation(account_id: str):
-    """Apply post-provisioning simulation if this account has a risk profile."""
-    profile = _SIMULATION_PROFILES.get(account_id)
-    if profile:
-        from app.integrations.provisioning import simulate_onboarding_progress
-        simulate_onboarding_progress(account_id, profile)
 
 
 @router.get("/scenarios")
@@ -130,9 +114,6 @@ async def run_demo_scenario(account_id: str, generate_report: bool = False):
         account_id=account_id,
         event_type="demo.trigger",
     )
-
-    # Apply post-provisioning simulation for risk demonstration
-    _apply_simulation(account_id)
 
     notifications = get_sent_notifications(account_id)
 
@@ -163,91 +144,6 @@ async def run_demo_scenario(account_id: str, generate_report: bool = False):
             }
 
     return response
-
-
-@router.post("/run-all")
-async def run_all_scenarios(generate_reports: bool = False):
-    """Run ALL demo scenarios and return results."""
-    clear_notifications()
-    reset_provisioning()
-    reset_resolution_state()
-
-    results = []
-    generated_reports = []
-
-    for scenario in ALL_SCENARIOS:
-        account_id = scenario["id"]
-
-        result = await run_onboarding_async(
-            account_id=account_id,
-            event_type="demo.batch",
-        )
-
-        # Apply post-provisioning simulation for risk demonstration
-        _apply_simulation(account_id)
-
-        scenario_result = {
-            "account_id": account_id,
-            "scenario_name": scenario["name"],
-            "category": scenario["category"],
-            "expected_decision": scenario["expected_decision"],
-            "actual_decision": result.get("decision"),
-            "passed": result.get("decision") == scenario["expected_decision"],
-            "stage": result.get("stage"),
-            "risk_level": result.get("risk_analysis", {}).get("risk_level"),
-            "violation_count": sum(len(v) for v in result.get("violations", {}).values()),
-            "warning_count": sum(len(v) for v in result.get("warnings", {}).values()),
-            "api_error_count": len(result.get("api_errors", [])),
-            "provisioned": result.get("provisioning") is not None,
-        }
-
-        if scenario["category"] == "error_simulation":
-            scenario_result["error_type"] = scenario.get("error_type")
-
-        results.append(scenario_result)
-
-        # Store for dashboard
-        _ALL_RUN_RESULTS[account_id] = {
-            "account_id": account_id,
-            "decision": result.get("decision"),
-            "violations": result.get("violations"),
-            "warnings": result.get("warnings"),
-            "provisioning": result.get("provisioning"),
-            "summary": result.get("human_summary"),
-            "scenario_name": scenario["name"],
-        }
-
-        if generate_reports and scenario["category"] != "error_simulation":
-            files = generate_full_run_report(result)
-            generated_reports.append({
-                "account_id": account_id,
-                "files": {k: os.path.basename(v) for k, v in files.items()}
-            })
-
-    total = len(results)
-    passed = sum(1 for r in results if r["passed"])
-
-    response = {
-        "summary": {
-            "total_scenarios": total,
-            "passed": passed,
-            "failed": total - passed,
-            "success_rate": f"{(passed/total)*100:.0f}%"
-        },
-        "results": results,
-    }
-
-    if generate_reports:
-        response["generated_reports"] = generated_reports
-        response["reports_note"] = "Reports are only generated for real account scenarios, not error simulations"
-
-    return response
-
-
-@router.post("/run-with-reports")
-async def run_all_with_reports():
-    """Run all scenarios and generate full reports for each."""
-    return await run_all_scenarios(generate_reports=True)
 
 
 @router.post("/enable-random-errors")
@@ -382,7 +278,7 @@ async def get_report(filename: str):
                 <ul>
                     {"".join(f'<li><a href="/demo/reports/{f}">{f}</a></li>' for f in available if f != '.gitkeep') or '<li>No reports generated yet</li>'}
                 </ul>
-                <p><a href="/demo/run-with-reports">Run all scenarios with reports</a></p>
+                <p>Run a scenario via <code>POST /demo/run/{'{account_id}'}</code> to generate reports.</p>
             </body>
             </html>
             """,
@@ -880,7 +776,6 @@ async def execute_action(req: ExecuteActionRequest):
             account_id=req.account_id,
             event_type="demo.rerun",
         )
-        _apply_simulation(req.account_id)
         _ALL_RUN_RESULTS[req.account_id] = {
             "account_id": req.account_id,
             "decision": result.get("decision"),
@@ -919,7 +814,6 @@ async def execute_action(req: ExecuteActionRequest):
             account_id=req.account_id,
             event_type="demo.review_escalation",
         )
-        _apply_simulation(req.account_id)
         _ALL_RUN_RESULTS[req.account_id] = {
             "account_id": req.account_id,
             "decision": result.get("decision"),

@@ -540,8 +540,6 @@ POST /demo/disable-random-errors
 |--------|----------|-------------|
 | GET | `/demo/scenarios` | List all scenarios |
 | POST | `/demo/run/{account_id}` | Run specific scenario |
-| POST | `/demo/run-all` | Run all scenarios |
-| POST | `/demo/run-with-reports` | Run all with report generation |
 
 ### Error Simulation Endpoints
 
@@ -795,7 +793,7 @@ uv run streamlit run streamlit_app.py
 |------|-------------|
 | **Dashboard** | Proactive alerts grouped by account, smart suggested actions with approve/dismiss, all onboarding results grouped by decision with health badges and expandable details |
 | **Portfolio Overview** | Aggregated health metrics (On Track/At Risk/Stalled/Blocked/Escalated), priority actions today, and sortable account table |
-| **Run Onboarding** | Scenario selector, run button, tabbed results (violations/warnings/actions/risks with sentiment scoring/provisioning with live progress), and run-all-scenarios batch mode |
+| **Run Onboarding** | Scenario selector, run button, tabbed results (violations/warnings/actions/risks with sentiment scoring/provisioning with live progress) |
 | **Chat with Agent** | Interactive chat with the CS assistant, account dropdown selector, portfolio-level quick actions (Portfolio Summary, All Alerts, Send All Reminders), and per-account actions |
 
 ### CS Monitoring Tools (6 tools)

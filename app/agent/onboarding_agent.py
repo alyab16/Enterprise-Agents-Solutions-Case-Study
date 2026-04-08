@@ -146,6 +146,22 @@ system, and a business rule validation engine. Use them as follows:
    - Find the customer signatory from CLM (not StackAdapt) and send
      welcome email via `send_customer_welcome`
 
+5. **ASSESS RISKS & SENTIMENT** — After provisioning (PROCEED accounts only),
+   you MUST run these assessments. They detect post-provisioning risks and
+   customer dissatisfaction signals:
+
+   a) Call `check_onboarding_progress` with the account_id — get completion %,
+      task breakdown, health_status
+   b) Call `identify_onboarding_risks` with the account_id — detect risks like
+      customer not logged in, SSO not configured, tasks blocked/stalled
+   c) Call `get_customer_sentiment` with the account_id — get sentiment score,
+      label, and trend from customer interactions
+
+   Include findings from ALL three tools in your OnboardingResult: update
+   risk_level based on identified risks, add risk items to warnings if any
+   are found, and mention sentiment in your summary. Even if no risks are
+   found, you MUST still call all three tools for every PROCEED account.
+
 ## DECISION RULES
 
 These rules are enforced by `validate_business_rules`. Do NOT override them.
@@ -488,7 +504,20 @@ async def provision_account(
     log_event("tool.provisioning.provision", account_id=account_id,
               tier=tier, correlation_id=ctx.deps.correlation_id)
 
-    return provisioning.provision_account(account_id, tier, customer_name)
+    result = provisioning.provision_account(account_id, tier, customer_name)
+
+    # Apply post-provisioning simulation for demo scenarios so that
+    # risk/sentiment assessment (step 5) sees realistic state immediately.
+    _SIMULATION_PROFILES = {
+        "STARTER-007": "no_login",
+        "GROWTH-008": "stalled",
+        "ENTERPRISE-009": "blocked_sso",
+    }
+    profile = _SIMULATION_PROFILES.get(account_id)
+    if profile:
+        provisioning.simulate_onboarding_progress(account_id, profile)
+
+    return result
 
 
 # ---------------------------------------------------------------------------
