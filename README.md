@@ -745,16 +745,6 @@ The assistant retains conversation history across messages within a session.
 
 ### Streamlit UI (4 pages)
 
-Start the UI alongside the FastAPI backend:
-
-```bash
-# Terminal 1: API backend
-uv run python main.py
-
-# Terminal 2: Streamlit UI
-uv run streamlit run streamlit_app.py
-```
-
 | Page | Description |
 |------|-------------|
 | **Dashboard** | Proactive alerts grouped by account, smart suggested actions with approve/dismiss, all onboarding results grouped by decision with health badges and expandable details |
